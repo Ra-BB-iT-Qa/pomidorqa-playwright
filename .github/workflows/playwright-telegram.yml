@@ -59,8 +59,8 @@ jobs:
     steps:
       - name: Send Telegram message
         env:
-          TELEGRAM_BOT_TOKEN: ${{ 8956277549:AAFw-lXB5v1KJ59FlsvtpDSH-so_3MGQbpU }}
-          TELEGRAM_CHAT_ID: ${{ @BotNaBoteNeNaeBot }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           JOB_STATUS: ${{ needs.test.result }}
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
