@@ -1,0 +1,88 @@
+# Личный пайплайн: те же проверки, что в Playwright CI, плюс сообщение в Telegram.
+name: Playwright Telegram
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: playwright-telegram-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint and Playwright tests
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Lint tests
+        run: npm run lint
+
+      - name: Run Playwright tests
+        run: npm test
+        env:
+          CI: true
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: playwright-report/
+          retention-days: 14
+
+  notify:
+    name: Telegram notification
+    needs: test
+    # Сообщение уходит и после зелёного прогона, и после падения. Отмена — без письма.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Send Telegram message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ 8956277549:AAFw-lXB5v1KJ59FlsvtpDSH-so_3MGQbpU }}
+          TELEGRAM_CHAT_ID: ${{ @BotNaBoteNeNaeBot }}
+          JOB_STATUS: ${{ needs.test.result }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "В репозитории нет секретов TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID"
+            exit 1
+          fi
+
+          if [ "$JOB_STATUS" = "success" ]; then
+            icon="✅"
+          else
+            icon="❌"
+          fi
+
+          text=$(printf '%s Playwright Telegram — %s\n\nРепозиторий: %s\nВетка: %s\nКоммит: %s\nАвтор: %s\nПрогон: %s' \
+            "$icon" "$JOB_STATUS" "$REPO" "$BRANCH" "${SHA:0:7}" "$ACTOR" "$RUN_URL")
+
+          curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${text}" \
+            --data-urlencode "disable_web_page_preview=true"
