@@ -1,4 +1,4 @@
-# Личный пайплайн: те же проверки, что в Playwright CI, плюс сообщение в Telegram.
+# Unit, API и E2E идут отдельными блоками. В Telegram уходит кубик по каждому.
 name: Playwright Telegram
 
 on:
@@ -10,11 +10,31 @@ concurrency:
   group: playwright-telegram-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
-  test:
-    name: Lint and Playwright tests
-    timeout-minutes: 30
+  tests:
+    name: ${{ matrix.title }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: unit
+            title: Unit
+            script: test:unit
+            browser: false
+          - id: api
+            title: API
+            script: test:api
+            browser: false
+          - id: e2e
+            title: E2E
+            script: test:e2e
+            browser: true
 
     steps:
       - name: Checkout repository
@@ -29,14 +49,28 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Install Chromium and system dependencies
+      - name: Cache Playwright browsers
+        if: matrix.browser
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium
+        if: matrix.browser && steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
 
+      - name: Install Chromium system libraries
+        if: matrix.browser && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
       - name: Lint tests
+        if: matrix.id == 'unit'
         run: npm run lint
 
-      - name: Run Playwright tests
-        run: npm test
+      - name: Run tests
+        run: npm run ${{ matrix.script }}
         env:
           CI: true
 
@@ -44,14 +78,14 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report-${{ github.run_id }}
+          name: playwright-report-${{ matrix.id }}
           path: playwright-report/
           retention-days: 14
+          if-no-files-found: ignore
 
   notify:
     name: Telegram notification
-    needs: test
-    # Сообщение уходит и после зелёного прогона, и после падения. Отмена — без письма.
+    needs: tests
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -59,28 +93,78 @@ jobs:
     steps:
       - name: Send Telegram message
         env:
+          GH_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          JOB_STATUS: ${{ needs.test.result }}
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
           ACTOR: ${{ github.actor }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ID: ${{ github.run_id }}
+          SERVER_URL: ${{ github.server_url }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
             echo "В репозитории нет секретов TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID"
             exit 1
           fi
 
-          if [ "$JOB_STATUS" = "success" ]; then
-            icon="✅"
+          jobs_tsv=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" --paginate --jq '.jobs[] | [.name, (.conclusion // "unknown")] | @tsv')
+          artifacts_tsv=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" --jq '.artifacts[] | [.name, .id] | @tsv')
+
+          conclusion_of() {
+            printf '%s\n' "$jobs_tsv" | awk -F '\t' -v n="$1" '$1 == n || $1 == "tests (" n ")" || $1 ~ ("/ " n "$") { print $2; exit }'
+          }
+
+          line_for() {
+            case "$(conclusion_of "$1")" in
+              success) printf '🟩 %s — прошёл\n' "$1" ;;
+              failure) printf '🟥 %s — упал\n' "$1" ;;
+              *) printf '⬜ %s — не запускался\n' "$1" ;;
+            esac
+          }
+
+          failed=""
+          missing=""
+          for block in Unit API E2E; do
+            result="$(conclusion_of "$block")"
+            if [ "$result" = "failure" ]; then
+              failed="${failed}${failed:+, }${block}"
+            elif [ "$result" != "success" ]; then
+              missing="${missing}${missing:+, }${block}"
+            fi
+          done
+
+          if [ -n "$failed" ]; then
+            summary="🟥 Упало: ${failed}"
+          elif [ -n "$missing" ]; then
+            summary="⬜ Нет результата: ${missing}"
           else
-            icon="❌"
+            summary="🟩 Все блоки прошли"
           fi
 
-          text=$(printf '%s Playwright Telegram — %s\n\nРепозиторий: %s\nВетка: %s\nКоммит: %s\nАвтор: %s\nПрогон: %s' \
-            "$icon" "$JOB_STATUS" "$REPO" "$BRANCH" "${SHA:0:7}" "$ACTOR" "$RUN_URL")
+          reports=""
+          while IFS="$(printf '\t')" read -r name id; do
+            case "$name" in
+              playwright-report-unit) reports="${reports}Unit — ${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}/artifacts/${id}"$'\n' ;;
+              playwright-report-api) reports="${reports}API — ${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}/artifacts/${id}"$'\n' ;;
+              playwright-report-e2e) reports="${reports}E2E — ${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}/artifacts/${id}"$'\n' ;;
+            esac
+          done <<EOF
+          $artifacts_tsv
+          EOF
+
+          if [ -z "$reports" ]; then
+            reports="отчёты не собраны"
+          fi
+
+          text=$(printf '%s\n\n%s%s%s\nРепозиторий: %s\nВетка: %s\nКоммит: %s\nАвтор: %s\n\nПрогон: %s/%s/actions/runs/%s\n\nОтчёты:\n%s' \
+            "$summary" \
+            "$(line_for Unit)" \
+            "$(line_for API)" \
+            "$(line_for E2E)" \
+            "$REPO" "$BRANCH" "${SHA:0:7}" "$ACTOR" \
+            "$SERVER_URL" "$REPO" "$RUN_ID" \
+            "$reports")
 
           curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \

@@ -23,6 +23,8 @@ export default defineConfig({
     {
       name: "e2e",
       testDir: "./tests/e2e",
+      // Сквозной сценарий с несколькими аккаунтами на живом стенде не укладывается в общий лимит.
+      timeout: 90_000,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: process.env.POMIDORQA_BASE_URL ?? "https://aiqa.su",

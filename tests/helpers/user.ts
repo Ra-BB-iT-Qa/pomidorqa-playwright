@@ -53,15 +53,20 @@ export type TestUser = {
   }
 
   export async function cleanupUsersViaApi(contexts: BrowserContext[]): Promise<void> {
-    const results = await Promise.allSettled(
-      contexts.map((context) => deleteUserViaApi(context.request))
+    await Promise.all(
+      contexts.map(async (context) => {
+        try {
+          await deleteUserViaApi(context.request);
+        } catch (reason) {
+          console.warn("Не удалось удалить тестового участника:", reason);
+        }
+        try {
+          await context.close();
+        } catch (reason) {
+          console.warn("Браузерный контекст уже закрыт:", reason);
+        }
+      })
     );
-    for (const result of results) {
-      if (result.status === "rejected") {
-        console.warn("Не удалось удалить тестового участника:", result.reason);
-      }
-    }
-    await Promise.all(contexts.map((context) => context.close()));
   }
 
   export function changeUserName(oldName: string) {
