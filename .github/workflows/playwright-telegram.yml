@@ -1,4 +1,5 @@
-# Unit, API и E2E идут отдельными блоками. В Telegram уходит кубик по каждому.
+# Сначала typecheck и lint. Потом unit, API и E2E на Chrome, Safari и Edge.
+# В Telegram каждый блок — отдельная строка.
 name: Playwright Telegram
 
 on:
@@ -15,8 +16,49 @@ permissions:
   actions: read
 
 jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Lint tests
+        run: npm run lint
+
   tests:
     name: ${{ matrix.title }}
+    needs: [typecheck, lint]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -25,16 +67,24 @@ jobs:
         include:
           - id: unit
             title: Unit
-            script: test:unit
-            browser: false
+            command: npm run test:unit
+            browser: ""
           - id: api
             title: API
-            script: test:api
-            browser: false
-          - id: e2e
-            title: E2E
-            script: test:e2e
-            browser: true
+            command: npm run test:api
+            browser: ""
+          - id: e2e-chrome
+            title: E2E Chrome
+            command: npm run test:e2e
+            browser: chromium
+          - id: e2e-safari
+            title: E2E Safari
+            command: npm run test:e2e:safari
+            browser: webkit
+          - id: e2e-edge
+            title: E2E Edge
+            command: npm run test:e2e:edge
+            browser: msedge
 
     steps:
       - name: Checkout repository
@@ -49,28 +99,24 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Cache Playwright browsers
-        if: matrix.browser
+      - name: Cache Playwright browser
+        if: matrix.browser != ''
         id: playwright-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('package-lock.json') }}
 
-      - name: Install Chromium
-        if: matrix.browser && steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+      - name: Install browser
+        if: matrix.browser != '' && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      - name: Install Chromium system libraries
-        if: matrix.browser && steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      - name: Lint tests
-        if: matrix.id == 'unit'
-        run: npm run lint
+      - name: Install browser system libraries
+        if: matrix.browser != '' && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps ${{ matrix.browser }}
 
       - name: Run tests
-        run: npm run ${{ matrix.script }}
+        run: ${{ matrix.command }}
         env:
           CI: true
 
@@ -84,14 +130,14 @@ jobs:
           if-no-files-found: ignore
 
   notify:
-    name: Telegram notification
-    needs: tests
+    name: Summary
+    needs: [typecheck, lint, tests]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - name: Send Telegram message
+      - name: Send Telegram summary
         env:
           GH_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -115,23 +161,23 @@ jobs:
             printf '%s\n' "$jobs_tsv" | awk -F '\t' -v n="$1" '$1 == n || $1 == "tests (" n ")" || $1 ~ ("/ " n "$") { print $2; exit }'
           }
 
-          line_for() {
-            case "$(conclusion_of "$1")" in
-              success) printf '🟩 %s — прошёл\n' "$1" ;;
-              failure) printf '🟥 %s — упал\n' "$1" ;;
-              *) printf '⬜ %s — не запускался\n' "$1" ;;
-            esac
-          }
-
+          lines=""
           failed=""
           missing=""
-          for block in Unit API E2E; do
-            result="$(conclusion_of "$block")"
-            if [ "$result" = "failure" ]; then
-              failed="${failed}${failed:+, }${block}"
-            elif [ "$result" != "success" ]; then
-              missing="${missing}${missing:+, }${block}"
-            fi
+          for block in "Typecheck" "Lint" "Unit" "API" "E2E Chrome" "E2E Safari" "E2E Edge"; do
+            case "$(conclusion_of "$block")" in
+              success)
+                lines="${lines}🟩 ${block} — прошёл"$'\n'
+                ;;
+              failure)
+                lines="${lines}🟥 ${block} — упал"$'\n'
+                failed="${failed}${failed:+, }${block}"
+                ;;
+              *)
+                lines="${lines}⬜ ${block} — не запускался"$'\n'
+                missing="${missing}${missing:+, }${block}"
+                ;;
+            esac
           done
 
           if [ -n "$failed" ]; then
@@ -147,21 +193,21 @@ jobs:
             case "$name" in
               playwright-report-unit) reports="${reports}Unit — ${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}/artifacts/${id}"$'\n' ;;
               playwright-report-api) reports="${reports}API — ${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}/artifacts/${id}"$'\n' ;;
-              playwright-report-e2e) reports="${reports}E2E — ${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}/artifacts/${id}"$'\n' ;;
+              playwright-report-e2e-chrome) reports="${reports}E2E Chrome — ${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}/artifacts/${id}"$'\n' ;;
+              playwright-report-e2e-safari) reports="${reports}E2E Safari — ${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}/artifacts/${id}"$'\n' ;;
+              playwright-report-e2e-edge) reports="${reports}E2E Edge — ${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}/artifacts/${id}"$'\n' ;;
             esac
           done <<EOF
           $artifacts_tsv
           EOF
 
           if [ -z "$reports" ]; then
-            reports="отчёты не собраны"
+            reports="отчёты не собраны"$'\n'
           fi
 
-          text=$(printf '%s\n\n%s%s%s\nРепозиторий: %s\nВетка: %s\nКоммит: %s\nАвтор: %s\n\nПрогон: %s/%s/actions/runs/%s\n\nОтчёты:\n%s' \
+          text=$(printf '%s\n%s\nРепозиторий: %s\nВетка: %s\nКоммит: %s\nАвтор: %s\nПрогон: %s/%s/actions/runs/%s\nОтчёты:\n%s' \
+            "$lines" \
             "$summary" \
-            "$(line_for Unit)" \
-            "$(line_for API)" \
-            "$(line_for E2E)" \
             "$REPO" "$BRANCH" "${SHA:0:7}" "$ACTOR" \
             "$SERVER_URL" "$REPO" "$RUN_ID" \
             "$reports")

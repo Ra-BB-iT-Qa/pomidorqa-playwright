@@ -1,10 +1,5 @@
 import { expect, type APIRequestContext, type BrowserContext, type Page } from "@playwright/test";
 
-const registerNameInput = (page: Page) => page.locator('#pomidorqa-register-name')
-const registerEmailInput = (page: Page) => page.locator('#pomidorqa-register-email')
-const registerPasswordInput = (page: Page) => page.locator('#pomidorqa-register-password')
-const registerSubmitButton = (page: Page) => page.getByRole('button', { name: 'Зарегистрироваться' })
-
 const bokingCalendarDay = (page: Page) => page.getByRole("group", { name: "Дни со слотами" }).getByRole("button")
 const bokingCalendarTime = (page: Page) => page.getByRole("group", { name: "Время слотов" }).getByRole("button")
 const bokingModal = (page: Page) => page.getByRole("dialog")
@@ -15,7 +10,6 @@ export const ROUTES = {
   profile: "/pomidorqa/profile",
   mySlots: "/pomidorqa/profile/slots",
   bookings: "/pomidorqa/bookings",
-  register: "/pomidorqa/auth/register",
   pomidorqa: "/pomidorqa",
 }
 
@@ -34,13 +28,19 @@ export type TestUser = {
     };
   }  
 
-  export async function registerUser(page: Page, user: TestUser) {
-    await page.goto(ROUTES.register);
-    await registerNameInput(page).fill(user.name);
-    await registerEmailInput(page).fill(user.email);
-    await registerPasswordInput(page).fill(user.password);
-    await registerSubmitButton(page).click();
-    await expect(page).toHaveURL(/\/pomidorqa\/?$/);
+  // Сервер ставит сессию в cookie того же браузерного контекста, что и page.
+  export async function registerUserViaApi(page: Page, user: TestUser) {
+    const response = await page.request.post(TEST_ACCOUNTS_ENDPOINT, {
+      data: {
+        name: user.name,
+        email: user.email,
+        password: user.password,
+      },
+    });
+    if (response.status() !== 201) {
+      throw new Error(`Регистрация не удалась: ${response.status()} ${await response.text()}`);
+    }
+    await page.goto(ROUTES.pomidorqa);
   }
 
   // Сессия берётся из cookie того же контекста, который регистрировал пользователя.

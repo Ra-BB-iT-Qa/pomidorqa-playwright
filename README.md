@@ -43,10 +43,10 @@ POMIDORQA_BASE_URL=http://localhost:3000 npx playwright test --project=e2e
 
 | Workflow | Когда запускается | Что делает |
 |---|---|---|
-| Playwright CI | pull request в `main`, ручной запуск | линтер и все тесты одним прогоном |
-| Playwright Telegram | pull request в `main`, ручной запуск | Unit, API и E2E отдельными блоками и сообщение в Telegram |
+| Playwright CI | pull request в `main`, ручной запуск | unit, API и E2E в Chrome |
+| Playwright Telegram | pull request в `main`, ручной запуск | typecheck и lint, затем unit, API и E2E в Chrome, Safari и Edge, сводка в Telegram |
 
-В Telegram у каждого блока свой кубик: зелёный, если прошёл, красный, если упал. В том же сообщении есть ссылка на HTML-отчёт Playwright по каждому блоку. Chromium ставится только для E2E и кэшируется между прогонами.
+В Telegram каждый блок на своей строке: зелёный кубик, если прошёл, красный, если упал. Ниже ссылка на прогон и HTML-отчёт каждого тестового блока.
 
 Для Telegram в секретах репозитория нужны `TELEGRAM_BOT_TOKEN` и `TELEGRAM_CHAT_ID`.
 

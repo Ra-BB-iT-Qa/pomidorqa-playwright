@@ -1,8 +1,15 @@
 import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUser, openBookingModal, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { makeUser, registerUserViaApi, openBookingModal, cleanupUsersViaApi, ROUTES } from "../helpers/user";
 import { ProfilePage } from "../Pages/profile-page";
 import { BookingPage } from "../Pages/booking-page";
 import { MySlotsPage } from "../Pages/my-slots-page";
+
+const accountContexts: BrowserContext[] = [];
+
+test.afterEach(async () => {
+  await cleanupUsersViaApi(accountContexts);
+  accountContexts.length = 0;
+});
 
 test("основной путь: регистрация → навык → слот → поиск в каталоге → бронирование → «Мои встречи» у обоих", async ({
   browser,
@@ -14,7 +21,6 @@ test("основной путь: регистрация → навык → сл�
   const guest2 = makeUser("Normis2", runId);
 
   // Три независимых аккаунта = три независимых браузерных контекста
-  const accountContexts: BrowserContext[] = [];
   const hostContext = await browser.newContext();
   accountContexts.push(hostContext);
   const normisContext = await browser.newContext();
@@ -22,7 +28,6 @@ test("основной путь: регистрация → навык → сл�
   const normis2Context = await browser.newContext();
   accountContexts.push(normis2Context);
 
-  try {
   const hostPage = await hostContext.newPage();
   const normisPage = await normisContext.newPage();
   const normis2Page = await normis2Context.newPage();
@@ -34,7 +39,7 @@ test("основной путь: регистрация → навык → сл�
   const hostMySlotsPage = new MySlotsPage(hostPage);
 
   await test.step("Хост: регистрируется в PomidorQA", async () => {
-    await registerUser(hostPage, host);
+    await registerUserViaApi(hostPage, host);
   });
 
 
@@ -61,7 +66,7 @@ test("основной путь: регистрация → навык → сл�
   });
 
   await test.step("Гость: регистрируется отдельным аккаунтом", async () => {
-    await registerUser(normisPage, guest);
+    await registerUserViaApi(normisPage, guest);
   });
 
   await test.step("Гость: ищет хоста в каталоге по навыку (сценарий 9)", async () => {
@@ -87,7 +92,7 @@ test("основной путь: регистрация → навык → сл�
   });
   
   await test.step("Гость2: регистрируется отдельным аккаунтом", async () => {
-    await registerUser(normis2Page, guest2);
+    await registerUserViaApi(normis2Page, guest2);
   });
   
   await test.step("Гость2: ищет хоста в каталоге по навыку и открывает карточку хоста", async () => {
@@ -149,8 +154,4 @@ test("основной путь: регистрация → навык → сл�
       await expect(card).toHaveText(guest.name);
     }).toPass({ timeout: 10_000 });
   });
-
-  } finally {
-    await cleanupUsersViaApi(accountContexts);
-  }
-  });
+});

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { TestUser, makeUser, registerUser, changeUserName, deleteUserViaApi } from "../helpers/user";
+import { TestUser, makeUser, registerUserViaApi, changeUserName, deleteUserViaApi } from "../helpers/user";
 import { ProfilePage } from "../Pages/profile-page";
 
 
@@ -12,7 +12,7 @@ import { ProfilePage } from "../Pages/profile-page";
         const runId = Date.now();
         user = makeUser("Jango", runId);
         profilePage = new ProfilePage(page);
-        await registerUser(page, user);
+        await registerUserViaApi(page, user);
         await profilePage.page.goto("/pomidorqa/profile");
         await expect(profilePage.page).toHaveURL(/\/pomidorqa\/profile/);
     });
@@ -77,9 +77,7 @@ import { ProfilePage } from "../Pages/profile-page";
         const skillName = "Brainfuck";
 
         await test.step("Добавление навыка", async () => {
-            await profilePage.skillInput.fill(skillName);
-            await profilePage.skillTypeSelect.selectOption("can_help");
-            await profilePage.addSkillButton.click();
+            await profilePage.addSkill(skillName, "can_help");
         });
 
         await test.step("Проверка заполнения поля can_help", async () => {

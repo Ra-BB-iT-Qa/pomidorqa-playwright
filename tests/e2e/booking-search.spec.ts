@@ -1,10 +1,17 @@
 import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUser, openBookingModal, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { makeUser, registerUserViaApi, openBookingModal, cleanupUsersViaApi, ROUTES } from "../helpers/user";
 import { ProfilePage } from "../Pages/profile-page";
 import { BookingPage } from "../Pages/booking-page";
 import { MySlotsPage } from "../Pages/my-slots-page";
 
 test.describe("После резервирования слота карточка пропадает из поиска", () => {
+  const accountContexts: BrowserContext[] = [];
+
+  test.afterEach(async () => {
+    await cleanupUsersViaApi(accountContexts);
+    accountContexts.length = 0;
+  });
+
   test("После резервирования слота карточка хоста пропадает из каталога для других участников", async ({
     browser,
   }) => {
@@ -14,7 +21,6 @@ test.describe("После резервирования слота карточк
     const guest = makeUser("Normis", runId);
     const other = makeUser("Drugo", runId);
 
-    const accountContexts: BrowserContext[] = [];
     const hostContext = await browser.newContext();
     accountContexts.push(hostContext);
     const guestContext = await browser.newContext();
@@ -22,8 +28,7 @@ test.describe("После резервирования слота карточк
     const otherContext = await browser.newContext();
     accountContexts.push(otherContext);
 
-    try {
-      const hostPage = await hostContext.newPage();
+    const hostPage = await hostContext.newPage();
       const guestPage = await guestContext.newPage();
       const otherPage = await otherContext.newPage();
 
@@ -33,7 +38,7 @@ test.describe("После резервирования слота карточк
       const hostMySlotsPage = new MySlotsPage(hostPage);
 
       await test.step("Хост: регистрируется в PomidorQA", async () => {
-        await registerUser(hostPage, host);
+        await registerUserViaApi(hostPage, host);
       });
 
       await test.step('Хост: добавляет навык «могу помочь» в профиле', async () => {
@@ -58,7 +63,7 @@ test.describe("После резервирования слота карточк
       });
 
       await test.step("Другой участник: регистрируется отдельным аккаунтом", async () => {
-        await registerUser(otherPage, other);
+        await registerUserViaApi(otherPage, other);
       });
 
       await test.step("Другой участник: ищет хоста в каталоге по навыку", async () => {
@@ -70,7 +75,7 @@ test.describe("После резервирования слота карточк
       });
 
       await test.step("Гость: регистрируется отдельным аккаунтом", async () => {
-        await registerUser(guestPage, guest);
+        await registerUserViaApi(guestPage, guest);
       });
 
       await test.step("Гость: ищет хоста в каталоге по навыку", async () => {
@@ -114,8 +119,5 @@ test.describe("После резервирования слота карточк
           await expect(otherBookingPage.catalogCard.filter({ hasText: host.name })).toHaveCount(0);
         }).toPass({ timeout: 15_000 });
       });
-    } finally {
-      await cleanupUsersViaApi(accountContexts);
-    }
   });
 });
