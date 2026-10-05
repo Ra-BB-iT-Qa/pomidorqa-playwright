@@ -7,6 +7,8 @@ export class MySlotsPage {
     slotsTimeInput: Locator;
     slotsAddSubmit: Locator;
     slotsCard: Locator;
+    slotError: Locator;
+    timezoneNote: Locator;
 
     constructor(page: Page) {
         this.page = page;
@@ -14,6 +16,16 @@ export class MySlotsPage {
         this.slotsTimeInput = page.locator("#pomidorqa-slots-time");
         this.slotsAddSubmit = page.getByRole("button", { name: "Добавить слот" });
         this.slotsCard = page.locator("[data-slot-id]");
+        this.slotError = page.getByTestId("AddSlotForm-form").getByRole("alert");
+        this.timezoneNote = page.getByText("Время указывается в твоём часовом поясе");
+    }
+
+    slotByTime(time: string) {
+        return this.slotsCard.filter({ hasText: time });
+    }
+
+    deleteButton(time: string) {
+        return this.slotByTime(time).getByRole("button", { name: "Удалить" });
     }
 
     async save() {
@@ -25,6 +37,7 @@ export class MySlotsPage {
       }
 
     async addSlot(date: string, time: string) {
+        await this.slotsAddSubmit.waitFor();
         const added = this.page.waitForResponse(
             (response) => response.url().endsWith(ROUTES.mySlots) && response.request().method() === "POST"
           );
@@ -32,5 +45,14 @@ export class MySlotsPage {
         await this.slotsTimeInput.fill(time);
         await this.slotsAddSubmit.click();
         await added;
+        await this.slotsAddSubmit.waitFor();
       }
+
+    async deleteSlot(time: string) {
+        const removed = this.page.waitForResponse(
+            (response) => response.url().endsWith(ROUTES.mySlots) && response.request().method() === "POST"
+        );
+        await this.slotByTime(time).getByRole("button", { name: "Удалить" }).click();
+        await removed;
+    }
 }

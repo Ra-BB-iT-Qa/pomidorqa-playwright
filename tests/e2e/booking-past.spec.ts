@@ -1,0 +1,144 @@
+import { test, expect, type BrowserContext } from "@playwright/test";
+import { makeUser, registerUserViaApi, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { openParticipant } from "../helpers/actor";
+import { futureSlotClock, zonedInstant } from "../helpers/time";
+
+const ZONE = "Europe/Moscow";
+const PAST_GRACE_MS = 15_000;
+const SLOT_LEAD_MIN_MS = 30_000;
+const SLOT_LEAD_MAX_MS = 45_000;
+
+test.describe("Бронирование слота в прошлом", () => {
+  const accountContexts: BrowserContext[] = [];
+
+  test.afterEach(async () => {
+    await cleanupUsersViaApi(accountContexts);
+    accountContexts.length = 0;
+  });
+
+  test("Нельзя забронировать слот, который уже начался", async ({ browser }) => {
+    test.setTimeout(180_000);
+    const runId = Date.now();
+    const skillTag = `Help-${runId}`;
+    const host = await openParticipant(browser, accountContexts, makeUser("Pank", runId));
+    const guest = await openParticipant(browser, accountContexts, makeUser("Normis", runId));
+
+    await test.step("Хост: регистрируется в PomidorQA", async () => {
+      await registerUserViaApi(host.page, host.user);
+    });
+
+    await test.step("Хост: открывает профиль", async () => {
+      await host.page.goto(ROUTES.profile);
+    });
+
+    await test.step("Хост: добавляет навык «могу помочь»", async () => {
+      await host.profile.addSkill(skillTag, "can_help");
+    });
+
+    await test.step("Хост: видит навык в профиле", async () => {
+      await expect(host.profile.canHelpSkill(skillTag)).toBeVisible();
+    });
+
+    await test.step("Хост: открывает свои слоты", async () => {
+      await host.page.goto(ROUTES.mySlots);
+    });
+
+    let slot = futureSlotClock(ZONE, SLOT_LEAD_MIN_MS);
+    let slotStartsAt = zonedInstant(slot.date, slot.time, ZONE);
+
+    await test.step("Хост: дожидается слота в пределах минуты", async () => {
+      await expect
+        .poll(
+          () => {
+            const candidate = futureSlotClock(ZONE, SLOT_LEAD_MIN_MS);
+            const start = zonedInstant(candidate.date, candidate.time, ZONE);
+            const delta = start - Date.now();
+            if (delta < SLOT_LEAD_MIN_MS || delta > SLOT_LEAD_MAX_MS) return false;
+            slot = candidate;
+            slotStartsAt = start;
+            return true;
+          },
+          { timeout: 60_000, intervals: [1_000] },
+        )
+        .toBe(true);
+    });
+
+    await test.step("Хост: добавляет слот, который ещё не начался", async () => {
+      await host.slots.addSlot(slot.date, slot.time);
+    });
+
+    await test.step("Хост: видит свободный слот", async () => {
+      await expect(host.slots.slotByTime(slot.time)).toContainText("свободен");
+    });
+
+    await test.step("Гость: регистрируется отдельным аккаунтом", async () => {
+      await registerUserViaApi(guest.page, guest.user);
+    });
+
+    await test.step("Гость: открывает каталог", async () => {
+      await guest.page.goto(ROUTES.pomidorqa);
+    });
+
+    await test.step("Гость: ищет хоста по навыку", async () => {
+      await guest.booking.filterCatalog(skillTag);
+    });
+
+    await test.step("Гость: видит карточку хоста", async () => {
+      await expect(guest.booking.personCard(host.user.name)).toBeVisible();
+    });
+
+    await test.step("Гость: открывает карточку хоста", async () => {
+      await guest.booking.openPerson(host.user.name);
+    });
+
+    await test.step("Гость: видит имя хоста", async () => {
+      await expect(guest.booking.personName).toHaveText(host.user.name);
+    });
+
+    await test.step("Гость: открывает слот", async () => {
+      await guest.booking.openSlot(slot.time);
+    });
+
+    await test.step("Гость: видит слот в модалке", async () => {
+      await expect(guest.booking.bookingDialog).toContainText(slot.time);
+    });
+
+    await test.step("Гость: дожидается, пока слот окажется в прошлом", async () => {
+      await expect
+        .poll(() => Date.now() >= slotStartsAt + PAST_GRACE_MS, {
+          timeout: 60_000,
+          intervals: [1_000],
+        })
+        .toBe(true);
+    });
+
+    await test.step("Гость: подтверждает бронирование", async () => {
+      await guest.booking.confirmBooking();
+    });
+
+    await test.step("Гость: видит отказ забронировать слот в прошлом", async () => {
+      await expect(guest.booking.bookingConfirmError).toHaveText("Этот слот уже в прошлом", {
+        timeout: 15_000,
+      });
+      await expect(guest.booking.bookingConfirmSuccess).toHaveCount(0);
+    });
+
+    await test.step("Гость: открывает «Мои встречи»", async () => {
+      await guest.page.goto(ROUTES.bookings);
+    });
+
+    await test.step("Гость: не видит бронирование", async () => {
+      await expect(guest.booking.bookingsUpcomingSection).toContainText("Пока пусто");
+      await expect(guest.booking.bookingsCard).toHaveCount(0);
+    });
+
+    await test.step("Хост: открывает «Мои встречи»", async () => {
+      await host.page.goto(ROUTES.bookings);
+    });
+
+    await test.step("Хост: не видит бронирование", async () => {
+      await expect(host.booking.bookingsUpcomingSection).toContainText("Пока пусто");
+      await expect(host.booking.bookingsCard).toHaveCount(0);
+    });
+  });
+});

@@ -12,6 +12,7 @@ export class ProfilePage {
     skillTypeSelect: Locator;
     addSkillButton: Locator;
     canHelpSkills: Locator;
+    wantToLearnSkills: Locator;
   
     constructor(page: Page) {
     this.page = page;
@@ -24,6 +25,29 @@ export class ProfilePage {
     this.skillTypeSelect = page.locator("#pomidorqa-profile-skill-type");
     this.addSkillButton = page.getByRole("button", { name: "Добавить" });
     this.canHelpSkills = page.getByTestId("can-help-skills");
+    this.wantToLearnSkills = page.locator('[data-skills="want_to_learn"]');
+    }
+
+    canHelpSkill(skillTag: string) {
+        return this.canHelpSkills.locator(`[data-skill-tag="${skillTag}"]`);
+    }
+
+    wantToLearnSkill(skillTag: string) {
+        return this.wantToLearnSkills.locator(`[data-skill-tag="${skillTag}"]`);
+    }
+
+    async removeSkill(skillTag: string) {
+        const removed = this.page.waitForResponse(
+            (response) =>
+                response.url().endsWith(ROUTES.profile) && response.request().method() === "POST"
+        );
+        await this.page.getByRole("button", { name: `Убрать ${skillTag}`, exact: true }).click();
+        await removed;
+    }
+
+    async setTimezone(timezone: string) {
+        await this.profileTimezoneSelect.selectOption(timezone);
+        await this.save();
     }
 
     async save() {

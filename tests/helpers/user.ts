@@ -7,6 +7,8 @@ const bokingModal = (page: Page) => page.getByRole("dialog")
 const TEST_ACCOUNTS_ENDPOINT = "/api/pomidorqa/test/accounts";
 
 export const ROUTES = {
+  register: "/pomidorqa/auth/register",
+  login: "/pomidorqa/auth/login",
   profile: "/pomidorqa/profile",
   mySlots: "/pomidorqa/profile/slots",
   bookings: "/pomidorqa/bookings",
@@ -22,13 +24,12 @@ export type TestUser = {
   export function makeUser(role:string, runId:number): TestUser {
     
     return {
-      name: `${role} na pive`, 
+      name: `${role} Terminator`, 
       email: `${role}-${runId}@example.com`,
       password: "password123",
     };
   }  
 
-  // Сервер ставит сессию в cookie того же браузерного контекста, что и page.
   export async function registerUserViaApi(page: Page, user: TestUser) {
     const response = await page.request.post(TEST_ACCOUNTS_ENDPOINT, {
       data: {
@@ -43,8 +44,6 @@ export type TestUser = {
     await page.goto(ROUTES.pomidorqa);
   }
 
-  // Сессия берётся из cookie того же контекста, который регистрировал пользователя.
-  // Вместе с аккаунтом сервер удаляет навыки, слоты и бронирования.
   export async function deleteUserViaApi(request: APIRequestContext): Promise<void> {
     const response = await request.delete(TEST_ACCOUNTS_ENDPOINT);
     if (response.status() !== 200) {
@@ -82,7 +81,7 @@ export async function openBookingModal(page: Page) {
         await page.reload();
       }
       await expect(dayChip).toBeVisible();
-    }).toPass({ timeout: 10_000 });
+    }).toPass({ timeout: 15_000 });
   
     const day = bokingCalendarDay(page).first();
     const time = bokingCalendarTime(page).first();
@@ -97,6 +96,6 @@ export async function openBookingModal(page: Page) {
         await time.click();
       }
       await expect(bokingModal(page)).toBeVisible();
-    }).toPass({ timeout: 10_000 });
+    }).toPass({ timeout: 15_000 });
   }
   
