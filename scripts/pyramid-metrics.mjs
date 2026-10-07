@@ -17,7 +17,6 @@ const reportTarget = args[0] ?? "playwright-report/results.json";
 const standDefectMarkers = [
   "создать слот раньше чем через 25 минут",
   "забронировать слот раньше чем через 25 минут",
-  "Поиск по навыку не показывает участника",
 ];
 
 const projectLabel = {
@@ -157,6 +156,7 @@ for (const test of tests) {
 
 const passedAsExpected = tests.length - unexpected.length - flaky.length - skipped.length;
 
+console.log(unexpected.length > 0 ? "❌ Есть падения\n" : "✅ Падений нет\n");
 console.log("Сводка прогона\n");
 console.log(
   columns([

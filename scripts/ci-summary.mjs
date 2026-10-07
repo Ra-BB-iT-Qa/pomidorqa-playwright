@@ -31,7 +31,6 @@ const layerLabel = {
 const standDefectMarkers = [
   "создать слот раньше чем через 25 минут",
   "забронировать слот раньше чем через 25 минут",
-  "Поиск по навыку не показывает участника",
 ];
 
 function formatDuration(ms) {

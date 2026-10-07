@@ -109,8 +109,10 @@ test.describe("Слоты", () => {
 
   test("нельзя забронировать слот раньше чем через 25 минут после первого", async ({ browser }) => {
     const runId = Date.now();
-    const skillTag = `Help-${runId}`;
+    const firstSkill = `Help-${runId}`;
+    const secondSkill = `Next-${runId}`;
     const host = await openParticipant(browser, accountContexts, makeUser("Pank", runId));
+    const otherHost = await openParticipant(browser, accountContexts, makeUser("Cody", runId));
     const guest = await openParticipant(browser, accountContexts, makeUser("Normis", runId));
     const date = tomorrowDate(ZONE);
     const tooSoon = shiftClock(date, FIRST_SLOT_TIME, SLOT_MINUTES - 1);
@@ -124,32 +126,53 @@ test.describe("Слоты", () => {
     });
 
     await test.step("Хост: добавляет навык «могу помочь»", async () => {
-      await host.profile.addSkill(skillTag, "can_help");
+      await host.profile.addSkill(firstSkill, "can_help");
       await host.page.reload();
     });
 
     await test.step("Хост: видит навык в профиле", async () => {
-      await expect(host.profile.canHelpSkill(skillTag)).toBeVisible();
+      await expect(host.profile.canHelpSkill(firstSkill)).toBeVisible();
     });
 
     await test.step("Хост: открывает свои слоты", async () => {
       await host.page.goto(ROUTES.mySlots);
     });
 
-    await test.step("Хост: добавляет первый слот", async () => {
+    await test.step("Хост: добавляет слот на 15:00", async () => {
       await host.slots.addSlot(date, FIRST_SLOT_TIME);
     });
 
-    await test.step("Хост: видит первый слот", async () => {
+    await test.step("Хост: видит слот на 15:00", async () => {
       await expect(host.slots.slotByTime(FIRST_SLOT_TIME)).toBeVisible();
     });
 
-    await test.step("Хост: добавляет слот на минуту раньше конца первого", async () => {
-      await host.slots.addSlot(tooSoon.date, tooSoon.time);
+    await test.step("Второй хост: регистрируется в PomidorQA", async () => {
+      await registerUserViaApi(otherHost.page, otherHost.user);
     });
 
-    await test.step("Хост: видит слот на минуту раньше конца первого", async () => {
-      await expect(host.slots.slotByTime(tooSoon.time)).toBeVisible();
+    await test.step("Второй хост: открывает профиль", async () => {
+      await otherHost.page.goto(ROUTES.profile);
+    });
+
+    await test.step("Второй хост: добавляет навык «могу помочь»", async () => {
+      await otherHost.profile.addSkill(secondSkill, "can_help");
+      await otherHost.page.reload();
+    });
+
+    await test.step("Второй хост: видит навык в профиле", async () => {
+      await expect(otherHost.profile.canHelpSkill(secondSkill)).toBeVisible();
+    });
+
+    await test.step("Второй хост: открывает свои слоты", async () => {
+      await otherHost.page.goto(ROUTES.mySlots);
+    });
+
+    await test.step("Второй хост: добавляет слот на минуту раньше конца первого", async () => {
+      await otherHost.slots.addSlot(tooSoon.date, tooSoon.time);
+    });
+
+    await test.step("Второй хост: видит свой слот", async () => {
+      await expect(otherHost.slots.slotByTime(tooSoon.time)).toBeVisible();
     });
 
     await test.step("Гость: регистрируется отдельным аккаунтом", async () => {
@@ -160,40 +183,56 @@ test.describe("Слоты", () => {
       await guest.page.goto(ROUTES.pomidorqa);
     });
 
-    await test.step("Гость: ищет хоста по навыку", async () => {
-      await guest.booking.filterCatalog(skillTag);
+    await test.step("Гость: ищет первого хоста по навыку", async () => {
+      await guest.booking.filterCatalog(firstSkill);
     });
 
-    await test.step("Гость: видит карточку хоста", async () => {
+    await test.step("Гость: видит карточку первого хоста", async () => {
       await expect(guest.booking.catalogCard.filter({ hasText: host.user.name })).toBeVisible();
     });
 
-    await test.step("Гость: открывает карточку хоста", async () => {
+    await test.step("Гость: открывает карточку первого хоста", async () => {
       await guest.booking.openPerson(host.user.name);
     });
 
-    await test.step("Гость: видит имя хоста", async () => {
+    await test.step("Гость: видит имя первого хоста", async () => {
       await expect(guest.booking.personName).toHaveText(host.user.name);
     });
 
-    await test.step("Гость: открывает первый слот", async () => {
+    await test.step("Гость: открывает слот на 15:00", async () => {
       await guest.booking.openSlot(FIRST_SLOT_TIME);
     });
 
-    await test.step("Гость: видит первый слот в модалке", async () => {
+    await test.step("Гость: видит слот на 15:00 в модалке", async () => {
       await expect(guest.booking.bookingDialog).toContainText(FIRST_SLOT_TIME);
     });
 
-    await test.step("Гость: подтверждает бронирование первого слота", async () => {
+    await test.step("Гость: подтверждает бронирование слота на 15:00", async () => {
       await guest.booking.confirmBooking();
     });
 
-    await test.step("Гость: видит успешное бронирование первого слота", async () => {
+    await test.step("Гость: видит успешное бронирование слота на 15:00", async () => {
       await expect(guest.booking.bookingConfirmSuccess).toBeVisible({ timeout: 15_000 });
     });
 
     await test.step("Гость: закрывает модалку", async () => {
       await guest.booking.closeBookingDialog();
+    });
+
+    await test.step("Гость: открывает каталог", async () => {
+      await guest.page.goto(ROUTES.pomidorqa);
+    });
+
+    await test.step("Гость: ищет второго хоста по навыку", async () => {
+      await guest.booking.filterCatalog(secondSkill);
+    });
+
+    await test.step("Гость: видит карточку второго хоста", async () => {
+      await expect(guest.booking.catalogCard.filter({ hasText: otherHost.user.name })).toBeVisible();
+    });
+
+    await test.step("Гость: открывает карточку второго хоста", async () => {
+      await guest.booking.openPerson(otherHost.user.name);
     });
 
     await test.step("Гость: открывает слот раньше чем через 25 минут", async () => {
@@ -205,10 +244,11 @@ test.describe("Слоты", () => {
     });
 
     await test.step("Гость: видит отказ забронировать слот раньше чем через 25 минут", async () => {
-      const result = guest.booking.bookingConfirmError.or(guest.booking.bookingConfirmSuccess);
-      await expect(result).toBeVisible({ timeout: 15_000 });
+      await expect(guest.booking.bookingConfirmError).toHaveText(
+        "У тебя уже есть слот или встреча на это время. Выбери другое окно.",
+        { timeout: 15_000 },
+      );
       await expect(guest.booking.bookingConfirmSuccess).toHaveCount(0);
-      await expect(guest.booking.bookingConfirmError).toBeVisible();
     });
   });
 

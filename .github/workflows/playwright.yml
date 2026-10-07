@@ -218,6 +218,7 @@ jobs:
           STATIC: ${{ needs.static.result }}
           PYRAMID: ${{ needs.pyramid.result }}
           E2E: ${{ needs.e2e.result }}
+          GH_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
@@ -228,6 +229,14 @@ jobs:
               cancelled) echo "отменён" ;;
               skipped) echo "пропущен" ;;
               *) echo "$1" ;;
+            esac
+          }
+
+          mark() {
+            case "$1" in
+              success) echo "✅" ;;
+              failure) echo "❌" ;;
+              *) echo "⬜" ;;
             esac
           }
 
@@ -242,25 +251,53 @@ jobs:
 
           if [[ "$STATIC" == "success" && "$PYRAMID" == "success" && "$E2E" == "success" ]]; then
             headline="Проверки прошли"
+            overall="success"
           elif [[ "$STATIC" == "failure" || "$PYRAMID" == "failure" || "$E2E" == "failure" ]]; then
             headline="Есть упавшие проверки"
+            overall="failure"
           elif [[ "$STATIC" == "cancelled" || "$PYRAMID" == "cancelled" || "$E2E" == "cancelled" ]]; then
             headline="Прогон отменён"
+            overall="cancelled"
           else
             headline="Прогон завершился не полностью"
+            overall="unknown"
           fi
 
           branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
+          jobs_tsv=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" --jq '.jobs[] | [.name, (.conclusion // "unknown")] | @tsv' || true)
+
+          browser_result() {
+            printf '%s\n' "$jobs_tsv" | awk -F '\t' -v n="$1" '$1 == n { print $2; exit }'
+          }
+
+          e2e_rows=""
+          e2e_lines=""
+          for pair in "E2E / chromium|E2E Chromium" "E2E / firefox|E2E Firefox" "E2E / webkit|E2E WebKit" "E2E / msedge|E2E Edge"; do
+            job_name="${pair%%|*}"
+            title="${pair#*|}"
+            conclusion="$(browser_result "$job_name")"
+            if [[ -z "$conclusion" ]]; then
+              continue
+            fi
+            e2e_rows="${e2e_rows}| $(mark "$conclusion") | ${title} | $(label "$conclusion") |"$'\n'
+            e2e_lines="${e2e_lines}$(mark "$conclusion") ${title} — $(label "$conclusion")"$'\n'
+          done
+
+          if [[ -z "$e2e_rows" ]]; then
+            e2e_rows="| $(mark "$E2E") | E2E | $(label "$E2E") |"$'\n'
+            e2e_lines="$(mark "$E2E") E2E — $(label "$E2E")"$'\n'
+          fi
+
           {
-            echo "## ${headline}"
+            echo "## $(mark "$overall") ${headline}"
             echo ""
-            echo "| Проверка | Результат |"
-            echo "| --- | --- |"
-            echo "| Typecheck и lint | ${STATIC} |"
-            echo "| Unit и API | ${PYRAMID} |"
-            echo "| E2E | ${E2E} |"
+            echo "| | Проверка | Результат |"
+            echo "| --- | --- | --- |"
+            echo "| $(mark "$STATIC") | Typecheck и lint | $(label "$STATIC") |"
+            echo "| $(mark "$PYRAMID") | Unit и API | $(label "$PYRAMID") |"
+            printf '%s' "$e2e_rows"
             echo ""
             echo "Прогон: ${run_url}"
           } | tee -a "$GITHUB_STEP_SUMMARY"
@@ -274,15 +311,18 @@ jobs:
             } | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
-          text=$(printf '%s\nРепозиторий: %s\nВетка: %s\nСобытие: %s\nАвтор: %s\nTypecheck и lint: %s\nUnit и API: %s\nE2E: %s\nПрогон: %s' \
+          text=$(printf '%s %s\nРепозиторий: %s\nВетка: %s\nСобытие: %s\nАвтор: %s\n%s Typecheck и lint — %s\n%s Unit и API — %s\n%sПрогон: %s' \
+            "$(mark "$overall")" \
             "$headline" \
             "$GITHUB_REPOSITORY" \
             "$branch" \
             "$(event_label "$GITHUB_EVENT_NAME")" \
             "$GITHUB_ACTOR" \
+            "$(mark "$STATIC")" \
             "$(label "$STATIC")" \
+            "$(mark "$PYRAMID")" \
             "$(label "$PYRAMID")" \
-            "$(label "$E2E")" \
+            "$e2e_lines" \
             "$run_url")
 
           if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then

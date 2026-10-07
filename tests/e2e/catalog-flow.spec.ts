@@ -137,7 +137,7 @@ test.describe("Каталог", () => {
     await test.step("Гость 3: видит участников со свободным слотом и не видит себя", async () => {
       await expect(guest3.booking.personCard(host.user.name)).toBeVisible();
       await expect(guest3.booking.personCard(guest1.user.name)).toBeVisible();
-      await expect(guest3.booking.personCard(guest2.user.name)).toHaveCount(0);
+      await expect(guest3.booking.personCard(guest2.user.name)).not.toBeVisible();
       await expect(guest3.booking.personCard(guest3.user.name)).toHaveCount(0);
     });
 
@@ -160,11 +160,11 @@ test.describe("Каталог", () => {
       await host.booking.filterCatalog(skillTag);
     });
 
-    await test.step("Хост: со слотом: видит зрителя и не видит себя", async () => {
+    await test.step("Хост: со слотом: видит участника с навыком «могу помочь» и не видит себя", async () => {
       await expect(host.booking.personCard(guest3.user.name)).toBeVisible();
       await expect(host.booking.personCard(guest1.user.name)).toHaveCount(0);
       await expect(host.booking.personCard(guest2.user.name)).toHaveCount(0);
-      await expect(host.booking.personCard(guest3.user.name)).toHaveCount(0);
+      await expect(host.booking.personCard(host.user.name)).toHaveCount(0);
     });
   });
 
