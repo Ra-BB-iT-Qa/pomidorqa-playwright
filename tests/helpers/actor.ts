@@ -2,6 +2,7 @@ import type { Browser, BrowserContext, Page } from "@playwright/test";
 import type { TestUser } from "./user";
 import { ProfilePage } from "../Pages/profile-page";
 import { BookingPage } from "../Pages/booking-page";
+import { HeaderPage } from "../Pages/header-page";
 import { MySlotsPage } from "../Pages/my-slots-page";
 
 export type Screens = {
@@ -9,6 +10,7 @@ export type Screens = {
   profile: ProfilePage;
   slots: MySlotsPage;
   booking: BookingPage;
+  header: HeaderPage;
 };
 
 export type Participant = Screens & {
@@ -21,6 +23,7 @@ function screens(page: Page): Screens {
     profile: new ProfilePage(page),
     slots: new MySlotsPage(page),
     booking: new BookingPage(page),
+    header: new HeaderPage(page),
   };
 }
 

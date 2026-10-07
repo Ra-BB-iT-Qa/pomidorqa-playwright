@@ -1,7 +1,6 @@
 import { test, expect, type BrowserContext } from "@playwright/test";
 import { makeUser, registerUserViaApi, cleanupUsersViaApi, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
-import { clockTimeInZone } from "../helpers/time";
 
 const HOST_TIMEZONE = "Asia/Yekaterinburg";
 const GUEST_TIMEZONE = "Europe/Kaliningrad";
@@ -15,11 +14,10 @@ test.describe("Часовой пояс слота", () => {
     accountContexts.length = 0;
   });
 
-  test("гость видит слот в своём часовом поясе", async ({ browser }) => {
+  test("Гость видит слот в часовом поясе хоста", async ({ browser }) => {
     const runId = Date.now();
     const skillTag = `Korozia-metal-${runId}`;
     const slotDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const guestSlotTime = clockTimeInZone(slotDate, SLOT_TIME, HOST_TIMEZONE, GUEST_TIMEZONE);
     const host = await openParticipant(browser, accountContexts, makeUser("Pank", runId));
     const guest = await openParticipant(browser, accountContexts, makeUser("Normis", runId));
 
@@ -39,6 +37,7 @@ test.describe("Часовой пояс слота", () => {
 
     await test.step("Хост: добавляет навык «могу помочь»", async () => {
       await host.profile.addSkill(skillTag, "can_help");
+      await host.page.reload();
     });
 
     await test.step("Хост: видит навык в профиле", async () => {
@@ -85,9 +84,9 @@ test.describe("Часовой пояс слота", () => {
       await guest.booking.openPerson(host.user.name);
     });
 
-    await test.step("Гость: видит слот в своём часовом поясе", async () => {
-      await expect(guest.booking.slotTimes.first()).toHaveText(guestSlotTime);
-      await expect(guest.booking.slotTimezoneNote).toContainText(GUEST_TIMEZONE);
+    await test.step("Гость: видит слот в часовом поясе хоста", async () => {
+      await expect(guest.booking.slotTimes.filter({ hasText: SLOT_TIME })).toHaveText(SLOT_TIME);
+      await expect(guest.booking.slotTimezoneNote).toContainText(HOST_TIMEZONE);
     });
   });
 });

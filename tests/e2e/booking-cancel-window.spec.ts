@@ -43,6 +43,7 @@ test.describe("Срок отмены бронирования", () => {
 
     await test.step("Хост: добавляет навык «могу помочь»", async () => {
       await host.profile.addSkill(skillTag, "can_help");
+      await host.page.reload();
     });
 
     await test.step("Хост: видит навык в профиле", async () => {
@@ -141,6 +142,7 @@ test.describe("Срок отмены бронирования", () => {
 
     await test.step("Хост: добавляет навык «могу помочь»", async () => {
       await host.profile.addSkill(skillTag, "can_help");
+      await host.page.reload();
     });
 
     await test.step("Хост: видит навык в профиле", async () => {
@@ -248,6 +250,7 @@ test.describe("Срок отмены бронирования", () => {
 
     await test.step("Хост: добавляет навык «могу помочь»", async () => {
       await host.profile.addSkill(skillTag, "can_help");
+      await host.page.reload();
     });
 
     await test.step("Хост: видит навык в профиле", async () => {

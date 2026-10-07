@@ -1,79 +1,307 @@
-# Имя workflow — так он отображается во вкладке Actions.
+# Проверки до слияния: качество кода, unit, API, затем E2E в трёх браузерах.
+# Имя workflow остаётся «Playwright CI»: на него опирается описание AI-reviewer.
 name: Playwright CI
+run-name: Playwright CI • ${{ github.head_ref || github.ref_name }} • ${{ github.actor }}
 
-# События, которые запускают проверки.
 on:
-  # Проверяем каждое изменение до слияния через Pull Request.
   pull_request:
-    # `main` здесь — целевая ветка PR, а не имя рабочей ветки.
     branches: [main]
-  # Оставляем кнопку ручного запуска во вкладке Actions.
+  push:
+    branches: [main]
   workflow_dispatch:
 
-# Все работы, которые выполнит workflow.
-jobs:
-  # Технический идентификатор единственной работы.
-  test:
-    # Читаемое имя работы в интерфейсе GitHub.
-    name: Lint and Playwright tests
-    # Останавливаем зависший прогон через 30 минут.
-    timeout-minutes: 30
-    # Запускаем проверки на чистой Linux-машине GitHub.
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
 
-    # Шаги выполняются сверху вниз в одной и той же машине.
+concurrency:
+  group: playwright-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  quality:
+    name: Quality / lint + typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      # Сначала загружаем в runner код из текущего PR.
       - name: Checkout repository
-        # Официальный action GitHub для клонирования репозитория.
         uses: actions/checkout@v6
 
-      # Готовим версию Node.js, на которой работает проект.
       - name: Setup Node.js
-        # Официальный action устанавливает Node.js и настраивает npm.
         uses: actions/setup-node@v6
-        # Параметры для action `setup-node`.
         with:
-          # Node.js 24 поддерживается текущими версиями ESLint и Playwright.
           node-version: 24
-          # Кэшируем скачанные npm-пакеты, но не готовый `node_modules`.
           cache: npm
 
-      # Устанавливаем JavaScript-зависимости проекта.
       - name: Install npm dependencies
-        # `npm ci` ставит точные версии из lock-файла и проверяет его согласованность с package.json.
         run: npm ci
 
-      # Playwright-пакет и браузерный бинарник устанавливаются отдельно.
-      - name: Install Chromium and system dependencies
-        # Для учебного CI достаточно Chromium; `--with-deps` добавляет нужные библиотеки Linux.
-        run: npx playwright install --with-deps chromium
+      - name: Typecheck
+        run: npm run typecheck
 
-      # Сначала запускаем быструю статическую проверку кода.
       - name: Lint tests
-        # Используем тот же npm-скрипт, который разработчик запускает локально.
         run: npm run lint
 
-      # После линтера проверяем реальное поведение тестами.
-      - name: Run Playwright tests
-        # Скрипт `test` из package.json запускает unit, API и E2E-проекты Playwright.
-        run: npm test
-        # Переменные окружения только для этого шага.
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit
         env:
-          # Включает CI-режим в playwright.config.ts: retry, один worker и reporter без открытия окна.
           CI: true
 
-      # Сохраняем HTML-отчёт после завершения тестов.
-      - name: Upload Playwright report
-        # Загружаем отчёт и после успеха, и после падения; пропускаем только отменённый run.
-        if: ${{ !cancelled() }}
-        # Официальный action GitHub превращает каталог в artifact текущего run.
-        uses: actions/upload-artifact@v7
-        # Параметры сохраняемого artifact.
+  api:
+    name: API tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
         with:
-          # Уникальный run_id не даёт отчётам разных запусков конфликтовать по имени.
-          name: playwright-report-${{ github.run_id }}
-          # Стандартный каталог, куда HTML reporter Playwright пишет отчёт.
+          node-version: 24
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run API tests
+        run: npm run test:api
+        env:
+          CI: true
+
+  e2e:
+    name: E2E / ${{ matrix.label }}
+    needs: [quality, unit, api]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      # Браузеры по очереди: общий стенд не выдерживает несколько E2E сразу.
+      max-parallel: 1
+      matrix:
+        include:
+          - browser: chromium
+            label: Chromium
+            command: npm run test:e2e
+          - browser: firefox
+            label: Firefox
+            command: npm run test:e2e:firefox
+          - browser: webkit
+            label: WebKit
+            command: npm run test:e2e:safari
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Resolve Playwright version
+        id: playwright_version
+        run: |
+          PLAYWRIGHT_VERSION=$(node -p "require('@playwright/test/package.json').version")
+          echo "version=$PLAYWRIGHT_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browser
+        id: browser_cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright_version.outputs.version }}-${{ matrix.browser }}
+
+      - name: Install browser system libraries
+        run: npx playwright install-deps ${{ matrix.browser }}
+
+      - name: Install browser on cache miss
+        if: steps.browser_cache.outputs.cache-hit != 'true'
+        run: npx playwright install ${{ matrix.browser }}
+
+      - name: Run E2E tests
+        run: ${{ matrix.command }}
+        env:
+          CI: true
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.browser }}-${{ github.run_id }}
           path: playwright-report/
-          # Двух недель достаточно для разбора PR, старые учебные отчёты не храним бессрочно.
+          if-no-files-found: warn
           retention-days: 14
+
+      - name: Upload failure diagnostics
+        if: ${{ failure() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.browser }}-${{ github.run_id }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  regression_gate:
+    name: Regression Gate
+    if: ${{ always() }}
+    needs: [quality, unit, api, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify mandatory CI signals
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          UNIT: ${{ needs.unit.result }}
+          API: ${{ needs.api.result }}
+          E2E: ${{ needs.e2e.result }}
+        run: |
+          printf '%-30s %s\n' "Quality / lint + typecheck" "$QUALITY"
+          printf '%-30s %s\n' "Unit tests" "$UNIT"
+          printf '%-30s %s\n' "API tests" "$API"
+          printf '%-30s %s\n' "E2E / Chromium Firefox WebKit" "$E2E"
+
+          if [[ "$QUALITY" == "success" && "$UNIT" == "success" && "$API" == "success" && "$E2E" == "success" ]]; then
+            echo "Regression gate passed."
+            exit 0
+          fi
+
+          echo "::error::Regression gate: одна из обязательных проверок не прошла."
+          exit 1
+
+  summary:
+    name: CI Summary
+    if: ${{ always() }}
+    needs: [quality, unit, api, e2e, regression_gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish CI summary
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          UNIT: ${{ needs.unit.result }}
+          API: ${{ needs.api.result }}
+          E2E: ${{ needs.e2e.result }}
+          REGRESSION_GATE: ${{ needs.regression_gate.result }}
+        run: |
+          {
+            echo "## CI Summary"
+            echo ""
+            echo "| Проверка | Результат |"
+            echo "| --- | --- |"
+            echo "| Quality / lint + typecheck | ${QUALITY} |"
+            echo "| Unit tests | ${UNIT} |"
+            echo "| API tests | ${API} |"
+            echo "| E2E / Chromium, Firefox, WebKit | ${E2E} |"
+            echo "| Regression Gate | ${REGRESSION_GATE} |"
+            echo ""
+            echo "Прогон: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  notify:
+    name: Telegram Notification
+    if: ${{ always() }}
+    needs: [quality, unit, api, e2e, regression_gate, summary]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send CI result to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          QUALITY: ${{ needs.quality.result }}
+          UNIT: ${{ needs.unit.result }}
+          API: ${{ needs.api.result }}
+          E2E: ${{ needs.e2e.result }}
+          REGRESSION_GATE: ${{ needs.regression_gate.result }}
+        run: |
+          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
+            echo "::notice::Секреты Telegram не заданы, уведомление пропущено."
+            exit 0
+          fi
+
+          result_label() {
+            case "$1" in
+              success) echo "прошёл" ;;
+              failure) echo "упал" ;;
+              cancelled) echo "отменён" ;;
+              skipped) echo "пропущен" ;;
+              *) echo "$1" ;;
+            esac
+          }
+
+          event_label() {
+            case "$1" in
+              pull_request) echo "pull request" ;;
+              push) echo "push" ;;
+              workflow_dispatch) echo "ручной запуск" ;;
+              *) echo "$1" ;;
+            esac
+          }
+
+          if [[ "$QUALITY" == "success" && "$UNIT" == "success" && "$API" == "success" && "$E2E" == "success" ]]; then
+            overall="Все проверки прошли"
+          elif [[ "$QUALITY" == "failure" || "$UNIT" == "failure" || "$API" == "failure" || "$E2E" == "failure" ]]; then
+            overall="Есть упавшие проверки"
+          elif [[ "$QUALITY" == "cancelled" || "$UNIT" == "cancelled" || "$API" == "cancelled" || "$E2E" == "cancelled" ]]; then
+            overall="Прогон отменён"
+          else
+            overall="Прогон завершился не полностью"
+          fi
+
+          branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          text=$(printf '%s\nРепозиторий: %s\nВетка: %s\nСобытие: %s\nАвтор: %s\nLint и типизация: %s\nUnit: %s\nAPI: %s\nE2E Chromium, Firefox, WebKit: %s\nRegression gate: %s\nПрогон: %s' \
+            "$overall" \
+            "$GITHUB_REPOSITORY" \
+            "$branch" \
+            "$(event_label "$GITHUB_EVENT_NAME")" \
+            "$GITHUB_ACTOR" \
+            "$(result_label "$QUALITY")" \
+            "$(result_label "$UNIT")" \
+            "$(result_label "$API")" \
+            "$(result_label "$E2E")" \
+            "$(result_label "$REGRESSION_GATE")" \
+            "$run_url")
+
+          if ! curl --silent --show-error --fail-with-body \
+            --retry 2 \
+            --retry-all-errors \
+            --connect-timeout 10 \
+            --max-time 20 \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${text}" \
+            --data-urlencode "disable_web_page_preview=true" \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            > /tmp/telegram-response.json; then
+            echo "::warning::Telegram не отправился. Результат CI от этого не меняется."
+            exit 0
+          fi
+
+          echo "Telegram notification sent."

@@ -3,6 +3,7 @@ import { ROUTES, type TestUser } from "../helpers/user";
 
 export class RegisterPage {
     page: Page;
+    heading: Locator;
     nameInput: Locator;
     emailInput: Locator;
     passwordInput: Locator;
@@ -10,6 +11,7 @@ export class RegisterPage {
 
     constructor(page: Page) {
         this.page = page;
+        this.heading = page.getByRole("heading", { name: "Регистрация в PomidorQA" });
         this.nameInput = page.getByLabel("Имя");
         this.emailInput = page.getByLabel("Email");
         this.passwordInput = page.getByLabel("Пароль");

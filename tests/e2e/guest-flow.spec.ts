@@ -1,6 +1,8 @@
 import { test, expect, type BrowserContext } from "@playwright/test";
 import { makeUser, registerUserViaApi, openBookingModal, cleanupUsersViaApi, ROUTES } from "../helpers/user";
 import { openGuest, openParticipant } from "../helpers/actor";
+import { LoginPage } from "../Pages/login-page";
+import { RegisterPage } from "../Pages/register-page";
 
 const accountContexts: BrowserContext[] = [];
 const guestContexts: BrowserContext[] = [];
@@ -33,6 +35,7 @@ test.describe("Гость", () => {
     await test.step("Хост: добавляет навык «могу помочь»", async () => {
       await host.page.goto(ROUTES.profile);
       await host.profile.addSkill(skillTag, "can_help");
+      await host.page.reload();
     });
 
     await test.step("Хост: видит навык в профиле", async () => {
@@ -102,6 +105,87 @@ test.describe("Гость", () => {
       await expect(guest.page).toHaveURL(/\/pomidorqa\/people\//);
       await expect(guest.booking.bookingConfirmError).toHaveText("Нужно войти в аккаунт PomidorQA");
       await expect(guest.booking.bookingConfirmSuccess).toHaveCount(0);
+    });
+  });
+
+  test("кнопки «Зарегистрироваться» и «Войти» открывают регистрацию и вход", async ({ browser }) => {
+    const guest = await openGuest(browser, guestContexts);
+    const register = new RegisterPage(guest.page);
+    const login = new LoginPage(guest.page);
+
+    await test.step("Гость: открывает каталог", async () => {
+      await guest.page.goto(ROUTES.pomidorqa);
+    });
+
+    await test.step("Гость: видит «Зарегистрироваться» и «Войти»", async () => {
+      await expect(guest.booking.heroRegisterLink).toBeVisible();
+      await expect(guest.booking.heroLoginLink).toBeVisible();
+    });
+
+    await test.step("Гость: открывает регистрацию", async () => {
+      await guest.booking.openRegistration();
+    });
+
+    await test.step("Гость: видит форму регистрации", async () => {
+      await expect(guest.page).toHaveURL(new RegExp(`${ROUTES.register}$`));
+      await expect(register.heading).toBeVisible();
+    });
+
+    await test.step("Гость: снова открывает каталог", async () => {
+      await guest.page.goto(ROUTES.pomidorqa);
+    });
+
+    await test.step("Гость: открывает вход", async () => {
+      await guest.booking.openLogin();
+    });
+
+    await test.step("Гость: видит форму входа", async () => {
+      await expect(guest.page).toHaveURL(new RegExp(`${ROUTES.login}$`));
+      await expect(login.heading).toBeVisible();
+    });
+  });
+
+  test("в шапке нет действий пользователя, а закрытые адреса открывают вход", async ({ browser }) => {
+    const guest = await openGuest(browser, guestContexts);
+    const login = new LoginPage(guest.page);
+
+    await test.step("Гость: открывает каталог", async () => {
+      await guest.page.goto(ROUTES.pomidorqa);
+    });
+
+    await test.step("Гость: в шапке не видит действия участника", async () => {
+      await expect(guest.header.guestLoginLink).toBeVisible();
+      await expect(guest.header.memberSlotsLink).toHaveCount(0);
+      await expect(guest.header.memberMeetingsLink).toHaveCount(0);
+      await expect(guest.header.memberProfileLink).toHaveCount(0);
+      await expect(guest.header.logoutButton).toHaveCount(0);
+    });
+
+    await test.step("Гость: открывает профиль по адресу", async () => {
+      await guest.page.goto(ROUTES.profile);
+    });
+
+    await test.step("Гость: видит страницу входа", async () => {
+      await expect(guest.page).toHaveURL(new RegExp(`${ROUTES.login}$`));
+      await expect(login.heading).toBeVisible();
+    });
+
+    await test.step("Гость: открывает свои слоты по адресу", async () => {
+      await guest.page.goto(ROUTES.mySlots);
+    });
+
+    await test.step("Гость: снова видит страницу входа", async () => {
+      await expect(guest.page).toHaveURL(new RegExp(`${ROUTES.login}$`));
+      await expect(login.heading).toBeVisible();
+    });
+
+    await test.step("Гость: открывает свои встречи по адресу", async () => {
+      await guest.page.goto(ROUTES.bookings);
+    });
+
+    await test.step("Гость: с встреч тоже попадает на вход", async () => {
+      await expect(guest.page).toHaveURL(new RegExp(`${ROUTES.login}$`));
+      await expect(login.heading).toBeVisible();
     });
   });
 });

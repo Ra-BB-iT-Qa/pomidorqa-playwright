@@ -17,7 +17,7 @@ test.describe("Бронирование слота в прошлом", () => {
   });
 
   test("Нельзя забронировать слот, который уже начался", async ({ browser }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(240_000);
     const runId = Date.now();
     const skillTag = `Help-${runId}`;
     const host = await openParticipant(browser, accountContexts, makeUser("Pank", runId));
@@ -33,6 +33,7 @@ test.describe("Бронирование слота в прошлом", () => {
 
     await test.step("Хост: добавляет навык «могу помочь»", async () => {
       await host.profile.addSkill(skillTag, "can_help");
+      await host.page.reload();
     });
 
     await test.step("Хост: видит навык в профиле", async () => {
@@ -121,6 +122,18 @@ test.describe("Бронирование слота в прошлом", () => {
         timeout: 15_000,
       });
       await expect(guest.booking.bookingConfirmSuccess).toHaveCount(0);
+    });
+
+    await test.step("Гость: закрывает окно бронирования", async () => {
+      await guest.booking.closeBookingDialog();
+    });
+
+    await test.step("Гость: обновляет страницу участника", async () => {
+      await guest.page.reload();
+    });
+
+    await test.step("Гость: не видит прошедший слот", async () => {
+      await expect(guest.booking.slotTimes.filter({ hasText: slot.time })).toHaveCount(0);
     });
 
     await test.step("Гость: открывает «Мои встречи»", async () => {

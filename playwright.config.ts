@@ -35,6 +35,12 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], ...e2eUse },
     },
     {
+      name: "e2e-firefox",
+      testDir: "./tests/e2e",
+      timeout: 90_000,
+      use: { ...devices["Desktop Firefox"], ...e2eUse },
+    },
+    {
       name: "e2e-safari",
       testDir: "./tests/e2e",
       timeout: 90_000,

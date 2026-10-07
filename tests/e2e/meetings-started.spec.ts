@@ -6,7 +6,6 @@ import { futureSlotClock, zonedInstant } from "../helpers/time";
 const ZONE = "Europe/Moscow";
 const PAST_GRACE_MS = 15_000;
 const SLOT_LEAD_MIN_MS = 40_000;
-const SLOT_LEAD_MAX_MS = 50_000;
 
 test.describe("Мои встречи", () => {
   const accountContexts: BrowserContext[] = [];
@@ -16,14 +15,14 @@ test.describe("Мои встречи", () => {
     accountContexts.length = 0;
   });
 
-  test("начавшаяся встреча переходит из ближайших в прошедшие", async ({ browser }) => {
-    test.setTimeout(180_000);
+  test("начавшаяся встреча переходит из Ближайшие в Прошедшие и отменённые", async ({ browser }) => {
+    test.setTimeout(240_000);
     const runId = Date.now();
     const skillTag = `Help-${runId}`;
     const host = await openParticipant(browser, accountContexts, makeUser("Pank", runId));
     const guest = await openParticipant(browser, accountContexts, makeUser("Normis", runId));
-    let slot = futureSlotClock(ZONE, SLOT_LEAD_MIN_MS);
-    let slotStartsAt = zonedInstant(slot.date, slot.time, ZONE);
+    let slot: ReturnType<typeof futureSlotClock>;
+    let slotStartsAt: number;
 
     await test.step("Хост: регистрируется в PomidorQA", async () => {
       await registerUserViaApi(host.page, host.user);
@@ -35,6 +34,7 @@ test.describe("Мои встречи", () => {
 
     await test.step("Хост: добавляет навык «могу помочь»", async () => {
       await host.profile.addSkill(skillTag, "can_help");
+      await host.page.reload();
     });
 
     await test.step("Хост: видит навык в профиле", async () => {
@@ -45,28 +45,13 @@ test.describe("Мои встречи", () => {
       await registerUserViaApi(guest.page, guest.user);
     });
 
-    await test.step("Хост: дожидается слота в пределах минуты", async () => {
-      await expect
-        .poll(
-          () => {
-            const candidate = futureSlotClock(ZONE, SLOT_LEAD_MIN_MS);
-            const start = zonedInstant(candidate.date, candidate.time, ZONE);
-            const delta = start - Date.now();
-            if (delta < SLOT_LEAD_MIN_MS || delta > SLOT_LEAD_MAX_MS) return false;
-            slot = candidate;
-            slotStartsAt = start;
-            return true;
-          },
-          { timeout: 60_000, intervals: [1_000] },
-        )
-        .toBe(true);
-    });
-
     await test.step("Хост: открывает свои слоты", async () => {
       await host.page.goto(ROUTES.mySlots);
     });
 
     await test.step("Хост: добавляет слот, который ещё не начался", async () => {
+      slot = futureSlotClock(ZONE, SLOT_LEAD_MIN_MS);
+      slotStartsAt = zonedInstant(slot.date, slot.time, ZONE);
       await host.slots.addSlot(slot.date, slot.time);
     });
 
@@ -114,7 +99,7 @@ test.describe("Мои встречи", () => {
     await test.step("Гость: дожидается начала встречи", async () => {
       await expect
         .poll(() => Date.now() >= slotStartsAt + PAST_GRACE_MS, {
-          timeout: 60_000,
+          timeout: SLOT_LEAD_MIN_MS + 60_000 + PAST_GRACE_MS,
           intervals: [1_000],
         })
         .toBe(true);

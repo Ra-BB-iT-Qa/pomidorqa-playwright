@@ -26,6 +26,7 @@ test.describe("После резервирования слота карточк
       await test.step('Хост: добавляет навык «могу помочь» в профиле', async () => {
         await host.page.goto(ROUTES.profile);
         await host.profile.addSkill(skillTag, "can_help");
+        await host.page.reload();
       });
 
       await test.step("Хост: Видит навык в профиле", async () => {

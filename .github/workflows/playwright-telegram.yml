@@ -1,10 +1,8 @@
-# Сначала typecheck и lint. Потом unit, API и E2E на Chrome, Safari и Edge.
-# В Telegram каждый блок — отдельная строка.
+# Ручной прогон Chrome, Safari и Edge со сводкой в Telegram.
+# Автоматический CI на pull request — .github/workflows/playwright.yml.
 name: Playwright Telegram
 
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

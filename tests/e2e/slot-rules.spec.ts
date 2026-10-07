@@ -125,6 +125,7 @@ test.describe("Слоты", () => {
 
     await test.step("Хост: добавляет навык «могу помочь»", async () => {
       await host.profile.addSkill(skillTag, "can_help");
+      await host.page.reload();
     });
 
     await test.step("Хост: видит навык в профиле", async () => {
@@ -229,6 +230,7 @@ test.describe("Слоты", () => {
 
     await test.step("Хост: добавляет навык «могу помочь»", async () => {
       await host.profile.addSkill(skillTag, "can_help");
+      await host.page.reload();
     });
 
     await test.step("Хост: видит навык в профиле", async () => {
@@ -326,6 +328,7 @@ test.describe("Слоты", () => {
 
     await test.step("Хост: добавляет навык «могу помочь»", async () => {
       await host.profile.addSkill(skillTag, "can_help");
+      await host.page.reload();
     });
 
     await test.step("Хост: видит навык в профиле", async () => {
@@ -387,6 +390,56 @@ test.describe("Слоты", () => {
     await test.step("Хост: не может удалить забронированный слот", async () => {
       await expect(host.slots.deleteButton(FIRST_SLOT_TIME)).toHaveCount(0);
       await expect(host.slots.slotByTime(FIRST_SLOT_TIME)).toBeVisible();
+    });
+  });
+
+  test("в форме слота только дата и время начала", async ({ browser }) => {
+    const host = await openParticipant(browser, accountContexts, makeUser("Pank", Date.now()));
+
+    await test.step("Хост: регистрируется в PomidorQA", async () => {
+      await registerUserViaApi(host.page, host.user);
+    });
+
+    await test.step("Хост: открывает свои слоты", async () => {
+      await host.page.goto(ROUTES.mySlots);
+    });
+
+    await test.step("Хост: видит дату и время начала и не видит поле длительности", async () => {
+      await expect(host.slots.slotsDateInput).toBeVisible();
+      await expect(host.slots.slotsTimeInput).toBeVisible();
+      await expect(host.slots.slotForm).toContainText("Дата");
+      await expect(host.slots.slotForm).toContainText("Время начала");
+      await expect(host.slots.slotFields).toHaveCount(2);
+    });
+  });
+
+  test("свободный слот удаляется", async ({ browser }) => {
+    const host = await openParticipant(browser, accountContexts, makeUser("Pank", Date.now()));
+    const date = tomorrowDate(ZONE);
+
+    await test.step("Хост: регистрируется в PomidorQA", async () => {
+      await registerUserViaApi(host.page, host.user);
+    });
+
+    await test.step("Хост: открывает свои слоты", async () => {
+      await host.page.goto(ROUTES.mySlots);
+    });
+
+    await test.step("Хост: добавляет свободный слот на завтра", async () => {
+      await host.slots.addSlot(date, FIRST_SLOT_TIME);
+    });
+
+    await test.step("Хост: видит свободный слот", async () => {
+      await expect(host.slots.slotByTime(FIRST_SLOT_TIME)).toContainText("свободен");
+    });
+
+    await test.step("Хост: удаляет свободный слот", async () => {
+      await host.slots.deleteSlot(FIRST_SLOT_TIME);
+    });
+
+    await test.step("Хост: не видит удалённый слот", async () => {
+      await expect(host.slots.slotByTime(FIRST_SLOT_TIME)).toHaveCount(0);
+      await expect(host.slots.slotsCard).toHaveCount(0);
     });
   });
 });

@@ -1,6 +1,7 @@
 import { test, expect, type BrowserContext } from "@playwright/test";
 import { makeUser, registerUserViaApi, openBookingModal, cleanupUsersViaApi, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
+import { tomorrowDate } from "../helpers/time";
 
 
 test.describe("Отмену бронирования видят и хост и гость", () => {
@@ -25,6 +26,7 @@ test.describe("Отмену бронирования видят и хост и �
       await test.step('Хост: добавляет навык «могу помочь» в профиле', async () => {
         await host.page.goto(ROUTES.profile);
         await host.profile.addSkill(skillTag, "can_help");
+        await host.page.reload();
       });
     
       await test.step("Хост: Видит навык в профиле", async () => {
@@ -106,6 +108,121 @@ test.describe("Отмену бронирования видят и хост и �
       });
       await test.step("Хост: Не видит бронирования с гостём", async () => {
         await expect(host.booking.bookingsCard).toHaveCount(0);
+      });
+    });
+
+    test("хост отменяет бронирование, и встреча оказывается среди прошедших", async ({ browser }) => {
+      const runId = Date.now();
+      const skillTag = `Help-${runId}`;
+      const slotTime = "12:00";
+      const host = await openParticipant(browser, accountContexts, makeUser("Pank", runId));
+      const guest = await openParticipant(browser, accountContexts, makeUser("Normis", runId));
+      const date = tomorrowDate("Europe/Moscow");
+
+      await test.step("Хост: регистрируется в PomidorQA", async () => {
+        await registerUserViaApi(host.page, host.user);
+      });
+
+      await test.step("Хост: открывает профиль", async () => {
+        await host.page.goto(ROUTES.profile);
+      });
+
+      await test.step("Хост: добавляет навык «могу помочь»", async () => {
+        await host.profile.addSkill(skillTag, "can_help");
+        await host.page.reload();
+      });
+
+      await test.step("Хост: видит навык в профиле", async () => {
+        await expect(host.profile.canHelpSkill(skillTag)).toBeVisible();
+      });
+
+      await test.step("Хост: открывает свои слоты", async () => {
+        await host.page.goto(ROUTES.mySlots);
+      });
+
+      await test.step("Хост: добавляет свободный слот на завтра", async () => {
+        await host.slots.addSlot(date, slotTime);
+      });
+
+      await test.step("Хост: видит свободный слот", async () => {
+        await expect(host.slots.slotByTime(slotTime)).toContainText("свободен");
+      });
+
+      await test.step("Гость: регистрируется отдельным аккаунтом", async () => {
+        await registerUserViaApi(guest.page, guest.user);
+      });
+
+      await test.step("Гость: открывает каталог", async () => {
+        await guest.page.goto(ROUTES.pomidorqa);
+      });
+
+      await test.step("Гость: ищет хоста по навыку", async () => {
+        await guest.booking.filterCatalog(skillTag);
+      });
+
+      await test.step("Гость: видит карточку хоста", async () => {
+        await expect(guest.booking.personCard(host.user.name)).toBeVisible();
+      });
+
+      await test.step("Гость: открывает карточку хоста", async () => {
+        await guest.booking.openPerson(host.user.name);
+      });
+
+      await test.step("Гость: открывает слот", async () => {
+        await guest.booking.openSlot(slotTime);
+      });
+
+      await test.step("Гость: подтверждает бронирование", async () => {
+        await guest.booking.confirmBooking();
+      });
+
+      await test.step("Гость: видит успешное бронирование", async () => {
+        await expect(guest.booking.bookingConfirmSuccess).toBeVisible({ timeout: 15_000 });
+        await expect(guest.booking.bookingConfirmError).toHaveCount(0);
+      });
+
+      await test.step("Хост: открывает «Мои встречи»", async () => {
+        await host.page.goto(ROUTES.bookings);
+      });
+
+      await test.step("Хост: видит встречу в ближайших", async () => {
+        await expect(host.booking.bookingsCardName).toHaveText(guest.user.name);
+      });
+
+      await test.step("Хост: отменяет бронирование", async () => {
+        await host.booking.bookingCancel();
+      });
+
+      await test.step("Хост: снова открывает «Мои встречи»", async () => {
+        await host.page.goto(ROUTES.bookings);
+      });
+
+      await test.step("Хост: видит отмену в прошедших и не видит кнопку отмены", async () => {
+        await expect(host.booking.bookingsUpcomingSection).toContainText("Пока пусто");
+        await expect(host.booking.bookingsCard).toHaveCount(0);
+        await expect(host.booking.bookingsPastCardName).toHaveText(guest.user.name);
+        await expect(host.booking.bookingsPastCard).toContainText("отменено");
+        await expect(host.booking.bookingsPastCancelButton).toHaveCount(0);
+      });
+
+      await test.step("Хост: открывает свои слоты", async () => {
+        await host.page.goto(ROUTES.mySlots);
+      });
+
+      await test.step("Хост: видит, что слот снова свободен", async () => {
+        await expect(host.slots.slotByTime(slotTime)).toContainText("свободен");
+      });
+
+      await test.step("Гость: открывает «Мои встречи»", async () => {
+        await guest.page.goto(ROUTES.bookings);
+      });
+
+      await test.step("Гость: видит отмену в прошедших и не видит кнопку отмены", async () => {
+        await expect(guest.booking.bookingsUpcomingSection).toContainText("Пока пусто");
+        await expect(guest.booking.bookingsCard).toHaveCount(0);
+        await expect(guest.booking.bookingsPastCardName).toHaveText(host.user.name);
+        await expect(guest.booking.bookingsPastCard).toContainText("отменено");
+        await expect(guest.booking.bookingsPastCancelButton).toHaveCount(0);
       });
     });
 });

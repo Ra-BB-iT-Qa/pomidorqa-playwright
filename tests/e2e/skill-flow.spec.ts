@@ -33,6 +33,7 @@ test.describe("Навыки", () => {
 
       await test.step("Хост: добавляет навык «хочу разобрать»", async () => {
         await profilePage.addSkill(skillTag, "want_to_learn");
+        await profilePage.page.reload();
       });
 
       await test.step("Хост: видит навык только в разделе «хочу разобрать»", async () => {
@@ -41,31 +42,12 @@ test.describe("Навыки", () => {
       });
     });
 
-    test("нельзя добавить второй такой же навык «могу помочь»", async () => {
-      const skillTag = `Help-${Date.now()}`;
-
-      await test.step("Хост: добавляет навык «могу помочь»", async () => {
-        await profilePage.addSkill(skillTag, "can_help");
-      });
-
-      await test.step("Хост: видит один навык", async () => {
-        await expect(profilePage.canHelpSkill(skillTag)).toHaveCount(1);
-      });
-
-      await test.step("Хост: добавляет тот же навык ещё раз", async () => {
-        await profilePage.addSkill(skillTag, "can_help");
-      });
-
-      await test.step("Хост: по-прежнему видит один навык «могу помочь»", async () => {
-        await expect(profilePage.canHelpSkill(skillTag)).toHaveCount(1);
-      });
-    });
-
     test("нельзя добавить второй такой же навык «хочу разобрать»", async () => {
       const skillTag = `Want-${Date.now()}`;
 
       await test.step("Хост: добавляет навык «хочу разобрать»", async () => {
         await profilePage.addSkill(skillTag, "want_to_learn");
+        await profilePage.page.reload();
       });
 
       await test.step("Хост: видит один навык", async () => {
@@ -74,10 +56,33 @@ test.describe("Навыки", () => {
 
       await test.step("Хост: добавляет тот же навык ещё раз", async () => {
         await profilePage.addSkill(skillTag, "want_to_learn");
+        await profilePage.page.reload();
       });
 
       await test.step("Хост: по-прежнему видит один навык «хочу разобрать»", async () => {
         await expect(profilePage.wantToLearnSkill(skillTag)).toHaveCount(1);
+      });
+    });
+
+    test("нельзя добавить второй такой же навык «могу помочь»", async () => {
+      const skillTag = `Help-${Date.now()}`;
+
+      await test.step("Хост: добавляет навык «могу помочь»", async () => {
+        await profilePage.addSkill(skillTag, "can_help");
+        await profilePage.page.reload();
+      });
+
+      await test.step("Хост: видит один навык", async () => {
+        await expect(profilePage.canHelpSkill(skillTag)).toHaveCount(1);
+      });
+
+      await test.step("Хост: добавляет тот же навык ещё раз", async () => {
+        await profilePage.addSkill(skillTag, "can_help");
+        await profilePage.page.reload();
+      });
+
+      await test.step("Хост: по-прежнему видит один навык «могу помочь»", async () => {
+        await expect(profilePage.canHelpSkill(skillTag)).toHaveCount(1);
       });
     });
 
@@ -87,6 +92,7 @@ test.describe("Навыки", () => {
 
       await test.step("Хост: добавляет навык «хочу разобрать»", async () => {
         await profilePage.addSkill(skillTag, "want_to_learn");
+        await profilePage.page.reload();
       });
 
       await test.step("Хост: видит навык в профиле", async () => {
@@ -108,6 +114,7 @@ test.describe("Навыки", () => {
 
       await test.step("Хост: убирает навык «хочу разобрать»", async () => {
         await profilePage.removeSkill(skillTag);
+        await profilePage.page.reload();
       });
 
       await test.step("Хост: не видит навык в профиле", async () => {
@@ -129,6 +136,7 @@ test.describe("Навыки", () => {
 
       await test.step("Хост: добавляет навык «могу помочь»", async () => {
         await profilePage.addSkill(skillTag, "can_help");
+        await profilePage.page.reload();
       });
 
       await test.step("Хост: видит навык в профиле", async () => {
@@ -150,6 +158,7 @@ test.describe("Навыки", () => {
 
       await test.step("Хост: убирает навык «могу помочь»", async () => {
         await profilePage.removeSkill(skillTag);
+        await profilePage.page.reload();
       });
 
       await test.step("Хост: не видит навык в профиле", async () => {
@@ -189,6 +198,7 @@ test.describe("Навыки", () => {
       await test.step("Хост: добавляет навык «могу помочь»", async () => {
         await host.page.goto(ROUTES.profile);
         await host.profile.addSkill(helpTag, "can_help");
+        await host.page.reload();
       });
 
       await test.step("Хост: видит навык «могу помочь»", async () => {
@@ -197,6 +207,7 @@ test.describe("Навыки", () => {
 
       await test.step("Хост: добавляет навык «хочу разобрать»", async () => {
         await host.profile.addSkill(wantTag, "want_to_learn");
+        await host.page.reload();
       });
 
       await test.step("Хост: видит навык «хочу разобрать»", async () => {
@@ -256,6 +267,7 @@ test.describe("Навыки", () => {
 
       await test.step("Хост: убирает навык «хочу разобрать»", async () => {
         await host.profile.removeSkill(wantTag);
+        await host.page.reload();
       });
 
       await test.step("Хост: не видит навык «хочу разобрать»", async () => {
@@ -285,6 +297,7 @@ test.describe("Навыки", () => {
       await test.step("Хост: добавляет навык «могу помочь»", async () => {
         await host.page.goto(ROUTES.profile);
         await host.profile.addSkill(helpTag, "can_help");
+        await host.page.reload();
       });
 
       await test.step("Хост: видит навык «могу помочь»", async () => {
@@ -344,6 +357,7 @@ test.describe("Навыки", () => {
 
       await test.step("Хост: убирает навык «могу помочь»", async () => {
         await host.profile.removeSkill(helpTag);
+        await host.page.reload();
       });
 
       await test.step("Хост: не видит навык «могу помочь»", async () => {

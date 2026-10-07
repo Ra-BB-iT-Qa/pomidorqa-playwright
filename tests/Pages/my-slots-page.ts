@@ -6,6 +6,8 @@ export class MySlotsPage {
     slotsDateInput: Locator;
     slotsTimeInput: Locator;
     slotsAddSubmit: Locator;
+    slotForm: Locator;
+    slotFields: Locator;
     slotsCard: Locator;
     slotError: Locator;
     timezoneNote: Locator;
@@ -15,6 +17,8 @@ export class MySlotsPage {
         this.slotsDateInput = page.locator("#pomidorqa-slots-date");
         this.slotsTimeInput = page.locator("#pomidorqa-slots-time");
         this.slotsAddSubmit = page.getByRole("button", { name: "Добавить слот" });
+        this.slotForm = page.getByTestId("AddSlotForm-form");
+        this.slotFields = this.slotForm.locator("input:not([type='hidden'])");
         this.slotsCard = page.locator("[data-slot-id]");
         this.slotError = page.getByTestId("AddSlotForm-form").getByRole("alert");
         this.timezoneNote = page.getByText("Время указывается в твоём часовом поясе");
