@@ -518,8 +518,8 @@ jobs:
           )
 
           if [[ -n "$PAGE_URL" ]]; then
-            text=$(printf 'Отчёт Playwright: %s\n\n%s' "$PAGE_URL" "$text")
-            curl_args+=(--data-urlencode "disable_web_page_preview=false")
+            text=$(printf '%s\nОтчёт: %s' "$text" "$PAGE_URL")
+            curl_args+=(--data-urlencode "link_preview_options={\"is_disabled\":false,\"url\":\"${PAGE_URL}\"}")
             curl_args+=(--data-urlencode "reply_markup={\"inline_keyboard\":[[{\"text\":\"Открыть отчёт\",\"url\":\"${PAGE_URL}\"}]]}")
           else
             curl_args+=(--data-urlencode "disable_web_page_preview=true")
