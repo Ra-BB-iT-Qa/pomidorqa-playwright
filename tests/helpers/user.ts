@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { expect, type APIRequestContext, type BrowserContext, type Page } from "@playwright/test";
 
 const bokingCalendarDay = (page: Page) => page.getByRole("group", { name: "Дни со слотами" }).getByRole("button")
@@ -21,11 +22,12 @@ export type TestUser = {
     password: string;
   };
 
-  export function makeUser(role:string, runId:number): TestUser {
-    
+  export function makeUser(role: string, runId: number): TestUser {
+    // Один Date.now() у параллельных воркеров даёт одну почту, и стенд отвечает 409.
+    const id = `${runId.toString(36)}-${randomBytes(3).toString("hex")}`;
     return {
-      name: `${role} Terminator`, 
-      email: `${role}-${runId}@example.com`,
+      name: `${role} ${id}`,
+      email: `${role}-${id}@example.com`,
       password: "password123",
     };
   }  
@@ -45,6 +47,11 @@ export type TestUser = {
   }
 
   export async function deleteUserViaApi(request: APIRequestContext): Promise<void> {
+    const { cookies } = await request.storageState();
+    const session = cookies.find((cookie) => cookie.name === "pomidorqa_session" && cookie.value);
+    if (!session) {
+      return;
+    }
     const response = await request.delete(TEST_ACCOUNTS_ENDPOINT);
     if (response.status() !== 200) {
       throw new Error(`Удаление аккаунта не удалось: ${response.status()} ${await response.text()}`);
