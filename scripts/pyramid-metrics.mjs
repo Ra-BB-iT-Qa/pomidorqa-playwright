@@ -7,7 +7,7 @@
 // В CI тот же скрипт вызывается с --inform: код возврата тестов уже решает
 // судьбу job, а здесь нужна только читаемая таблица в Summary.
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const args = process.argv.slice(2).filter((arg) => arg !== "--inform");
@@ -121,7 +121,17 @@ if (reportPaths.length === 0) {
 const reports = [];
 for (const reportPath of reportPaths) {
   try {
-    reports.push(JSON.parse(readFileSync(reportPath, "utf8")));
+    const report = JSON.parse(readFileSync(reportPath, "utf8"));
+    const tests = [];
+    for (const suite of report.suites ?? []) collect(suite, "", tests);
+    const retries = [...new Set((report.config?.projects ?? []).map((project) => project.retries).filter((value) => value != null))];
+    reports.push({
+      file: posix(reportPath),
+      tests,
+      wallClockMs: report.stats?.duration == null ? null : Math.round(report.stats.duration),
+      workers: report.config?.workers ?? null,
+      retries,
+    });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`Не удалось прочитать ${reportPath}: ${reason}`);
@@ -129,10 +139,7 @@ for (const reportPath of reportPaths) {
   }
 }
 
-const tests = [];
-for (const report of reports) {
-  for (const suite of report.suites ?? []) collect(suite, "", tests);
-}
+const tests = reports.flatMap((report) => report.tests);
 
 if (tests.length === 0) {
   console.error(`В ${reportTarget} нет тестов`);
@@ -145,10 +152,13 @@ const newFailures = unexpected.filter((test) => !isStandDefect(test));
 const flaky = tests.filter((test) => test.status === "flaky");
 const skipped = tests.filter((test) => test.status === "skipped");
 const retried = tests.filter((test) => test.attempts > 1);
-const elapsed = reports.reduce(
-  (sum, report) => sum + (report.stats?.duration ?? 0),
-  0,
-) || tests.reduce((sum, test) => sum + test.durationMs, 0);
+const summedDurationMs = tests.reduce((sum, test) => sum + test.durationMs, 0);
+const wallClockKnown = reports.every((report) => report.wallClockMs != null);
+const wallClockMs = wallClockKnown
+  ? reports.reduce((sum, report) => sum + report.wallClockMs, 0)
+  : summedDurationMs;
+const workers = [...new Set(reports.map((report) => report.workers).filter((value) => value != null))];
+const retries = [...new Set(reports.flatMap((report) => report.retries))];
 
 const levels = new Map();
 for (const test of tests) {
@@ -173,18 +183,28 @@ console.log(
       ["Прошли со второй попытки", flaky.length],
       ["Пропущены", skipped.length],
       ["С повтором", retried.length],
-      ["Длительность работ", duration(elapsed)],
+      [reports.length > 1 ? "Сумма времени прогонов" : "Время прогона", duration(wallClockMs)],
+      ["Сумма сценариев", duration(summedDurationMs)],
+      ["Воркеры", workers.length ? workers.join(", ") : "—"],
+      ["Повторы", retries.length ? retries.join(", ") : "—"],
     ],
   ),
 );
 
 const byProject = new Map();
-for (const test of tests) {
-  const bucket = byProject.get(test.project) ?? { count: 0, durationMs: 0, failed: 0 };
-  bucket.count += 1;
-  bucket.durationMs += test.durationMs;
-  if (test.status === "unexpected") bucket.failed += 1;
-  byProject.set(test.project, bucket);
+for (const report of reports) {
+  const names = [...new Set(report.tests.map((test) => test.project))];
+  for (const test of report.tests) {
+    const bucket = byProject.get(test.project) ?? { count: 0, durationMs: 0, wallClockMs: 0, failed: 0 };
+    bucket.count += 1;
+    bucket.durationMs += test.durationMs;
+    if (test.status === "unexpected") bucket.failed += 1;
+    byProject.set(test.project, bucket);
+  }
+  if (names.length === 1 && report.wallClockMs != null) {
+    const bucket = byProject.get(names[0]);
+    if (bucket) bucket.wallClockMs += report.wallClockMs;
+  }
 }
 
 const projectOrder = ["unit", "api", "e2e", "e2e-firefox", "e2e-safari", "e2e-edge"];
@@ -202,11 +222,11 @@ if (e2eProjectCount > 1) {
       projectLabel[project] ?? project,
       bucket.count,
       bucket.failed,
-      duration(bucket.durationMs),
+      bucket.wallClockMs > 0 ? duration(bucket.wallClockMs) : duration(bucket.durationMs),
     ]);
   }
   console.log("\n**Браузеры**\n");
-  console.log(markdownTable(["Проект", "Тестов", "Падений", "Время"], projectRows));
+  console.log(markdownTable(["Проект", "Тестов", "Падений", "Время прогона"], projectRows));
 }
 
 const levelOrder = ["unit", "api", "e2e"];
@@ -219,7 +239,7 @@ for (const name of [...levels.keys()].sort(
 }
 
 console.log("\n**Уровни пирамиды**\n");
-console.log(markdownTable(["Уровень", "Тестов", "Время"], levelRows));
+console.log(markdownTable(["Уровень", "Тестов", "Сумма сценариев"], levelRows));
 
 if (tests.some((test) => test.level === "e2e")) {
   const e2eFiles = specFiles("tests").filter((file) => file.includes("/e2e/"));
@@ -271,5 +291,40 @@ if (newFailures.length > 0) {
     ),
   );
 }
+
+const metrics = {
+  wallClockMs,
+  summedDurationMs,
+  workers,
+  retries,
+  tests: tests.length,
+  failed: unexpected.length,
+  flaky: flaky.length,
+  runs: reports.map((report) => ({
+    file: report.file,
+    projects: [...new Set(report.tests.map((test) => test.project))],
+    wallClockMs: report.wallClockMs,
+    workers: report.workers,
+    retries: report.retries,
+    tests: report.tests.length,
+    failed: report.tests.filter((test) => test.status === "unexpected").length,
+  })),
+  scenarios: tests.map((test) => ({
+    project: test.project,
+    file: test.file,
+    title: test.title,
+    status: test.status,
+    durationMs: test.durationMs,
+    attempts: test.attempts,
+  })),
+};
+
+const metricsPath = statSync(reportTarget).isDirectory()
+  ? path.join(reportTarget, "metrics.json")
+  : path.join(path.dirname(reportTarget), "metrics.json");
+writeFileSync(metricsPath, `${JSON.stringify(metrics, null, 2)}\n`);
+
+console.log("\n**Машиночитаемый отчёт**\n");
+console.log(`\`${posix(metricsPath)}\`: время прогона ${wallClockMs} мс, воркеры ${workers.join(", ") || "—"}, повторы ${retries.join(", ") || "—"}.`);
 
 if (!informOnly && unexpected.length > 0) process.exit(1);

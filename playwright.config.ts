@@ -2,9 +2,10 @@ import { defineConfig, devices, type ReporterDescription } from "@playwright/tes
 
 const e2eUse = {
   baseURL: process.env.POMIDORQA_BASE_URL ?? "https://aiqa.su",
-  trace: "on" as const,
-  screenshot: "on" as const,
-  video: "on" as const,
+  // Локально запись нужна для разбора. В CI она на каждый зелёный тест съедает диск и время.
+  trace: process.env.CI ? ("retain-on-failure" as const) : ("on" as const),
+  screenshot: process.env.CI ? ("only-on-failure" as const) : ("on" as const),
+  video: process.env.CI ? ("retain-on-failure" as const) : ("on" as const),
 };
 
 // Локально достаточно списка и HTML. В CI JSON нужен сводке метрик, окно отчёта на runner не открываем.
@@ -19,10 +20,10 @@ const reporter: ReporterDescription[] = process.env.CI
 export default defineConfig({
   timeout: 30_000,
   fullyParallel: false,
-  // В CI повторяем падение один раз, чтобы заметить флак; локально ошибка видна сразу.
-  retries: process.env.CI ? 1 : 0,
-  // Один CI-worker снижает конкуренцию за пользователей, слоты и бронирования на общем стенде.
-  workers: process.env.CI ? 1 : undefined,
+  // Повтор выключен: падение видно сразу, а время прогона не удваивается.
+  retries: 0,
+  // В CI у каждого job матрицы четыре воркера. Локально Playwright берёт половину ядер.
+  workers: process.env.CI ? 4 : undefined,
   reporter,
   projects: [
     {
