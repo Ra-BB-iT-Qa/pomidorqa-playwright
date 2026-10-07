@@ -1,4 +1,4 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices, type ReporterDescription } from "@playwright/test";
 
 const e2eUse = {
   baseURL: process.env.POMIDORQA_BASE_URL ?? "https://aiqa.su",
@@ -7,6 +7,15 @@ const e2eUse = {
   video: "on" as const,
 };
 
+// Локально достаточно списка и HTML. В CI JSON нужен сводке метрик, окно отчёта на runner не открываем.
+const reporter: ReporterDescription[] = process.env.CI
+  ? [
+      ["list"],
+      ["html", { open: "never" }],
+      ["json", { outputFile: "playwright-report/results.json" }],
+    ]
+  : [["list"], ["html", { open: "on-failure" }]];
+
 export default defineConfig({
   timeout: 30_000,
   fullyParallel: false,
@@ -14,8 +23,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   // Один CI-worker снижает конкуренцию за пользователей, слоты и бронирования на общем стенде.
   workers: process.env.CI ? 1 : undefined,
-  // В CI пишем лог и HTML-artifact, но не пытаемся открыть браузерное окно на headless-runner.
-  reporter: [["list"], ["html", { open: process.env.CI ? "never" : "on-failure" }]],
+  reporter,
   projects: [
     {
       name: "unit",

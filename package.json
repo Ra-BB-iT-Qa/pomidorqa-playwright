@@ -7,12 +7,15 @@
     "test": "playwright test --project=unit --project=api --project=e2e",
     "test:unit": "playwright test --project=unit",
     "test:api": "playwright test --project=api",
+    "test:pyramid": "playwright test --project=unit --project=api",
     "test:e2e": "playwright test --project=e2e",
     "test:e2e:firefox": "playwright test --project=e2e-firefox",
     "test:e2e:safari": "playwright test --project=e2e-safari",
     "test:e2e:edge": "playwright test --project=e2e-edge",
+    "summary": "node scripts/ci-summary.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint tests",
+    "metrics": "node scripts/pyramid-metrics.mjs",
     "report": "playwright show-report"
   },
   "devDependencies": {

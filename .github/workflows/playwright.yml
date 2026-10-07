@@ -1,5 +1,4 @@
-# Проверки до слияния: качество кода, unit, API, затем E2E в трёх браузерах.
-# Имя workflow остаётся «Playwright CI»: на него опирается описание AI-reviewer.
+# Typecheck и lint, затем unit с API, и только после них браузер на общем стенде.
 name: Playwright CI
 run-name: Playwright CI • ${{ github.head_ref || github.ref_name }} • ${{ github.actor }}
 
@@ -9,12 +8,22 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      browsers:
+        description: Браузеры E2E
+        required: true
+        default: chromium
+        type: choice
+        options:
+          - chromium
+          - all
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
-  group: playwright-ci-${{ github.ref }}
+  group: pomidorqa-ci-${{ github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -22,8 +31,26 @@ defaults:
     shell: bash
 
 jobs:
-  quality:
-    name: Quality / lint + typecheck
+  plan:
+    name: E2E browser plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      browsers: ${{ steps.pick.outputs.browsers }}
+    steps:
+      - name: Choose browsers
+        id: pick
+        env:
+          BROWSER_CHOICE: ${{ github.event.inputs.browsers }}
+        run: |
+          if [[ "$BROWSER_CHOICE" == "all" ]]; then
+            echo 'browsers=["chromium","firefox","webkit","msedge"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'browsers=["chromium"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  static:
+    name: Typecheck and lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -45,8 +72,9 @@ jobs:
       - name: Lint tests
         run: npm run lint
 
-  unit:
-    name: Unit tests
+  pyramid:
+    name: Unit and API
+    needs: static
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -62,53 +90,43 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Run unit tests
-        run: npm run test:unit
+      - name: Run unit and API tests
+        run: npm run test:pyramid
         env:
           CI: true
 
-  api:
-    name: API tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - name: Write pyramid summary
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          {
+            echo "### Unit и API"
+            echo '```'
+            node scripts/pyramid-metrics.mjs --inform playwright-report/results.json
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Upload pyramid report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
         with:
-          node-version: 24
-          cache: npm
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Run API tests
-        run: npm run test:api
-        env:
-          CI: true
+          name: report-pyramid-${{ github.run_id }}
+          path: playwright-report/
+          if-no-files-found: warn
+          retention-days: 14
 
   e2e:
-    name: E2E / ${{ matrix.label }}
-    needs: [quality, unit, api]
+    name: E2E / ${{ matrix.browser }}
+    needs: [static, pyramid, plan]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      # Браузеры по очереди: общий стенд не выдерживает несколько E2E сразу.
+      # Общий стенд не выдерживает несколько браузеров сразу.
       max-parallel: 1
       matrix:
-        include:
-          - browser: chromium
-            label: Chromium
-            command: npm run test:e2e
-          - browser: firefox
-            label: Firefox
-            command: npm run test:e2e:firefox
-          - browser: webkit
-            label: WebKit
-            command: npm run test:e2e:safari
+        browser: ${{ fromJSON(needs.plan.outputs.browsers) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -122,37 +140,48 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Resolve Playwright version
-        id: playwright_version
+      - name: Map browser to Playwright project
+        id: target
         run: |
-          PLAYWRIGHT_VERSION=$(node -p "require('@playwright/test/package.json').version")
-          echo "version=$PLAYWRIGHT_VERSION" >> "$GITHUB_OUTPUT"
+          case "${{ matrix.browser }}" in
+            chromium) echo "project=e2e" >> "$GITHUB_OUTPUT" ;;
+            firefox) echo "project=e2e-firefox" >> "$GITHUB_OUTPUT" ;;
+            webkit) echo "project=e2e-safari" >> "$GITHUB_OUTPUT" ;;
+            msedge) echo "project=e2e-edge" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Неизвестный браузер ${{ matrix.browser }}" && exit 1 ;;
+          esac
 
       - name: Cache Playwright browser
-        id: browser_cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright_version.outputs.version }}-${{ matrix.browser }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}-${{ matrix.browser }}
 
-      - name: Install browser system libraries
-        run: npx playwright install-deps ${{ matrix.browser }}
+      - name: Install browser
+        run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      - name: Install browser on cache miss
-        if: steps.browser_cache.outputs.cache-hit != 'true'
-        run: npx playwright install ${{ matrix.browser }}
-
-      - name: Run E2E tests
-        run: ${{ matrix.command }}
+      - name: Run E2E
+        run: npx playwright test --project=${{ steps.target.outputs.project }}
         env:
           CI: true
+
+      - name: Write E2E summary
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          {
+            echo "### E2E / ${{ matrix.browser }}"
+            echo '```'
+            node scripts/pyramid-metrics.mjs --inform playwright-report/results.json
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report-${{ matrix.browser }}-${{ github.run_id }}
+          name: report-e2e-${{ matrix.browser }}-${{ github.run_id }}
           path: playwright-report/
           if-no-files-found: warn
           retention-days: 14
@@ -167,85 +196,32 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  regression_gate:
-    name: Regression Gate
+  result:
+    name: Result
     if: ${{ always() }}
-    needs: [quality, unit, api, e2e]
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Verify mandatory CI signals
-        env:
-          QUALITY: ${{ needs.quality.result }}
-          UNIT: ${{ needs.unit.result }}
-          API: ${{ needs.api.result }}
-          E2E: ${{ needs.e2e.result }}
-        run: |
-          printf '%-30s %s\n' "Quality / lint + typecheck" "$QUALITY"
-          printf '%-30s %s\n' "Unit tests" "$UNIT"
-          printf '%-30s %s\n' "API tests" "$API"
-          printf '%-30s %s\n' "E2E / Chromium Firefox WebKit" "$E2E"
-
-          if [[ "$QUALITY" == "success" && "$UNIT" == "success" && "$API" == "success" && "$E2E" == "success" ]]; then
-            echo "Regression gate passed."
-            exit 0
-          fi
-
-          echo "::error::Regression gate: одна из обязательных проверок не прошла."
-          exit 1
-
-  summary:
-    name: CI Summary
-    if: ${{ always() }}
-    needs: [quality, unit, api, e2e, regression_gate]
+    needs: [static, pyramid, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Publish CI summary
-        env:
-          QUALITY: ${{ needs.quality.result }}
-          UNIT: ${{ needs.unit.result }}
-          API: ${{ needs.api.result }}
-          E2E: ${{ needs.e2e.result }}
-          REGRESSION_GATE: ${{ needs.regression_gate.result }}
-        run: |
-          {
-            echo "## CI Summary"
-            echo ""
-            echo "| Проверка | Результат |"
-            echo "| --- | --- |"
-            echo "| Quality / lint + typecheck | ${QUALITY} |"
-            echo "| Unit tests | ${UNIT} |"
-            echo "| API tests | ${API} |"
-            echo "| E2E / Chromium, Firefox, WebKit | ${E2E} |"
-            echo "| Regression Gate | ${REGRESSION_GATE} |"
-            echo ""
-            echo "Прогон: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-  notify:
-    name: Telegram Notification
-    if: ${{ always() }}
-    needs: [quality, unit, api, e2e, regression_gate, summary]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Send CI result to Telegram
+      - name: Download test reports
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: report-*
+          path: ci-reports
+
+      - name: Publish result and notify Telegram
         env:
+          STATIC: ${{ needs.static.result }}
+          PYRAMID: ${{ needs.pyramid.result }}
+          E2E: ${{ needs.e2e.result }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          QUALITY: ${{ needs.quality.result }}
-          UNIT: ${{ needs.unit.result }}
-          API: ${{ needs.api.result }}
-          E2E: ${{ needs.e2e.result }}
-          REGRESSION_GATE: ${{ needs.regression_gate.result }}
         run: |
-          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
-            echo "::notice::Секреты Telegram не заданы, уведомление пропущено."
-            exit 0
-          fi
-
-          result_label() {
+          label() {
             case "$1" in
               success) echo "прошёл" ;;
               failure) echo "упал" ;;
@@ -264,33 +240,54 @@ jobs:
             esac
           }
 
-          if [[ "$QUALITY" == "success" && "$UNIT" == "success" && "$API" == "success" && "$E2E" == "success" ]]; then
-            overall="Все проверки прошли"
-          elif [[ "$QUALITY" == "failure" || "$UNIT" == "failure" || "$API" == "failure" || "$E2E" == "failure" ]]; then
-            overall="Есть упавшие проверки"
-          elif [[ "$QUALITY" == "cancelled" || "$UNIT" == "cancelled" || "$API" == "cancelled" || "$E2E" == "cancelled" ]]; then
-            overall="Прогон отменён"
+          if [[ "$STATIC" == "success" && "$PYRAMID" == "success" && "$E2E" == "success" ]]; then
+            headline="Проверки прошли"
+          elif [[ "$STATIC" == "failure" || "$PYRAMID" == "failure" || "$E2E" == "failure" ]]; then
+            headline="Есть упавшие проверки"
+          elif [[ "$STATIC" == "cancelled" || "$PYRAMID" == "cancelled" || "$E2E" == "cancelled" ]]; then
+            headline="Прогон отменён"
           else
-            overall="Прогон завершился не полностью"
+            headline="Прогон завершился не полностью"
           fi
 
           branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-          text=$(printf '%s\nРепозиторий: %s\nВетка: %s\nСобытие: %s\nАвтор: %s\nLint и типизация: %s\nUnit: %s\nAPI: %s\nE2E Chromium, Firefox, WebKit: %s\nRegression gate: %s\nПрогон: %s' \
-            "$overall" \
+          {
+            echo "## ${headline}"
+            echo ""
+            echo "| Проверка | Результат |"
+            echo "| --- | --- |"
+            echo "| Typecheck и lint | ${STATIC} |"
+            echo "| Unit и API | ${PYRAMID} |"
+            echo "| E2E | ${E2E} |"
+            echo ""
+            echo "Прогон: ${run_url}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          if find ci-reports -name results.json -print -quit | grep -q .; then
+            {
+              echo ""
+              echo '```'
+              node scripts/pyramid-metrics.mjs --inform ci-reports
+              echo '```'
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+          text=$(printf '%s\nРепозиторий: %s\nВетка: %s\nСобытие: %s\nАвтор: %s\nTypecheck и lint: %s\nUnit и API: %s\nE2E: %s\nПрогон: %s' \
+            "$headline" \
             "$GITHUB_REPOSITORY" \
             "$branch" \
             "$(event_label "$GITHUB_EVENT_NAME")" \
             "$GITHUB_ACTOR" \
-            "$(result_label "$QUALITY")" \
-            "$(result_label "$UNIT")" \
-            "$(result_label "$API")" \
-            "$(result_label "$E2E")" \
-            "$(result_label "$REGRESSION_GATE")" \
+            "$(label "$STATIC")" \
+            "$(label "$PYRAMID")" \
+            "$(label "$E2E")" \
             "$run_url")
 
-          if ! curl --silent --show-error --fail-with-body \
+          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
+            echo "::notice::Секреты Telegram не заданы, уведомление пропущено."
+          elif ! curl --silent --show-error --fail-with-body \
             --retry 2 \
             --retry-all-errors \
             --connect-timeout 10 \
@@ -300,8 +297,14 @@ jobs:
             --data-urlencode "disable_web_page_preview=true" \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             > /tmp/telegram-response.json; then
-            echo "::warning::Telegram не отправился. Результат CI от этого не меняется."
+            echo "::warning::Telegram не отправился. Результат проверок от этого не меняется."
+          else
+            echo "Telegram notification sent."
+          fi
+
+          if [[ "$STATIC" == "success" && "$PYRAMID" == "success" && "$E2E" == "success" ]]; then
             exit 0
           fi
 
-          echo "Telegram notification sent."
+          echo "::error::Одна из обязательных проверок не прошла."
+          exit 1
