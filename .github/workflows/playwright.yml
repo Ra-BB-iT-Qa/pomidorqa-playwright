@@ -1,4 +1,4 @@
-# Typecheck и lint, затем unit с API, и только после них браузер на общем стенде.
+# Typecheck и lint, затем unit с API, и только после них E2E по браузерам на общем стенде.
 name: Playwright CI
 run-name: Playwright CI • ${{ github.head_ref || github.ref_name }} • ${{ github.actor }}
 
@@ -45,8 +45,10 @@ jobs:
         run: |
           if [[ "$BROWSER_CHOICE" == "all" ]]; then
             echo 'browsers=["chromium","firefox","webkit","msedge"]' >> "$GITHUB_OUTPUT"
-          else
+          elif [[ "$BROWSER_CHOICE" == "chromium" ]]; then
             echo 'browsers=["chromium"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'browsers=["chromium","firefox","webkit"]' >> "$GITHUB_OUTPUT"
           fi
 
   static:
@@ -101,9 +103,8 @@ jobs:
           set -o pipefail
           {
             echo "### Unit и API"
-            echo '```'
+            echo ""
             node scripts/pyramid-metrics.mjs --inform playwright-report/results.json
-            echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload pyramid report
@@ -171,9 +172,8 @@ jobs:
           set -o pipefail
           {
             echo "### E2E / ${{ matrix.browser }}"
-            echo '```'
+            echo ""
             node scripts/pyramid-metrics.mjs --inform playwright-report/results.json
-            echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Playwright report
@@ -240,6 +240,16 @@ jobs:
             esac
           }
 
+          status_cell() {
+            case "$1" in
+              success) echo "✅ Успешно" ;;
+              failure) echo "❌ Ошибка" ;;
+              cancelled) echo "⬜ Отменено" ;;
+              skipped) echo "⬜ Пропущено" ;;
+              *) echo "⬜ $1" ;;
+            esac
+          }
+
           event_label() {
             case "$1" in
               pull_request) echo "pull request" ;;
@@ -274,42 +284,63 @@ jobs:
 
           e2e_rows=""
           e2e_lines=""
-          for pair in "E2E / chromium|E2E Chromium" "E2E / firefox|E2E Firefox" "E2E / webkit|E2E WebKit" "E2E / msedge|E2E Edge"; do
+          browser_list=""
+          for pair in "E2E / chromium|E2E Chromium|Chromium" "E2E / firefox|E2E Firefox|Firefox" "E2E / webkit|E2E WebKit|WebKit" "E2E / msedge|E2E Edge|Edge"; do
             job_name="${pair%%|*}"
-            title="${pair#*|}"
+            rest="${pair#*|}"
+            title="${rest%%|*}"
+            short="${rest#*|}"
             conclusion="$(browser_result "$job_name")"
             if [[ -z "$conclusion" ]]; then
               continue
             fi
-            e2e_rows="${e2e_rows}| $(mark "$conclusion") | ${title} | $(label "$conclusion") |"$'\n'
+            e2e_rows="${e2e_rows}| ${title} | $(status_cell "$conclusion") |"$'\n'
             e2e_lines="${e2e_lines}$(mark "$conclusion") ${title} — $(label "$conclusion")"$'\n'
+            browser_list="${browser_list}${browser_list:+ · }${short}"
           done
 
           if [[ -z "$e2e_rows" ]]; then
-            e2e_rows="| $(mark "$E2E") | E2E | $(label "$E2E") |"$'\n'
+            e2e_rows="| E2E | $(status_cell "$E2E") |"$'\n'
             e2e_lines="$(mark "$E2E") E2E — $(label "$E2E")"$'\n'
+            browser_list="—"
           fi
 
+          node_version="$(node -v)"
+
           {
-            echo "## $(mark "$overall") ${headline}"
+            echo "### 1. Проверки качества"
             echo ""
-            echo "| | Проверка | Результат |"
-            echo "| --- | --- | --- |"
-            echo "| $(mark "$STATIC") | Typecheck и lint | $(label "$STATIC") |"
-            echo "| $(mark "$PYRAMID") | Unit и API | $(label "$PYRAMID") |"
+            echo "| Проверка | Статус |"
+            echo "| --- | --- |"
+            echo "| Typecheck и lint | $(status_cell "$STATIC") |"
+            echo "| Unit и API | $(status_cell "$PYRAMID") |"
             printf '%s' "$e2e_rows"
             echo ""
-            echo "Прогон: ${run_url}"
+            echo "### 2. Метрики прогона"
+            echo ""
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
           if find ci-reports -name results.json -print -quit | grep -q .; then
-            {
-              echo ""
-              echo '```'
-              node scripts/pyramid-metrics.mjs --inform ci-reports
-              echo '```'
-            } | tee -a "$GITHUB_STEP_SUMMARY"
+            node scripts/pyramid-metrics.mjs --inform ci-reports | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Отчёт тестов не собрался." | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+
+          {
+            echo ""
+            echo "### 3. Окружение"
+            echo ""
+            echo "| Параметр | Значение |"
+            echo "| --- | --- |"
+            echo "| Runner | Linux / X64 |"
+            echo "| Node.js | \`${node_version}\` |"
+            echo "| Стенд | https://aiqa.su |"
+            echo "| Браузеры | ${browser_list} |"
+            echo "| Параллельность | 1 процесс |"
+            echo "| Повторы | 1 |"
+            echo ""
+            echo "Прогон: ${run_url}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
           text=$(printf '%s %s\nРепозиторий: %s\nВетка: %s\nСобытие: %s\nАвтор: %s\n%s Typecheck и lint — %s\n%s Unit и API — %s\n%sПрогон: %s' \
             "$(mark "$overall")" \

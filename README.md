@@ -199,5 +199,5 @@ npm run test:e2e
 
 E2E по умолчанию идут на `https://aiqa.su`. Локальный стенд: `POMIDORQA_BASE_URL=http://localhost:3000`.
 
-В CI на pull request и push в `main` сначала идут typecheck и lint, затем unit и API, и только после них E2E в Chromium. Ручной запуск может прогнать Chromium, Firefox, WebKit и Edge по одному. Итог собирает job Result. Метрики пишутся в Summary прогона. В Telegram сообщение уходит только если заданы секреты бота.
+В CI на pull request и push в `main` сначала идут typecheck и lint, затем unit и API, и только после них E2E по одному браузеру: Chromium, Firefox и WebKit. Ручной запуск `all` добавляет Edge. Итог собирает job Result. Метрики пишутся в Summary прогона. В Telegram каждый браузер идёт отдельной строкой, сообщение уходит только если заданы секреты бота.
 </details>

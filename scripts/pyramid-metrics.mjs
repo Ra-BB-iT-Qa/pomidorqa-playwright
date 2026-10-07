@@ -93,11 +93,15 @@ function isStandDefect(test) {
   return standDefectMarkers.some((marker) => test.title.includes(marker));
 }
 
-function columns(rows) {
-  const widths = rows[0].map((_, index) => Math.max(...rows.map((row) => String(row[index]).length)));
-  return rows
-    .map((row) => row.map((cell, index) => String(cell).padEnd(widths[index])).join("  "))
-    .join("\n");
+function markdownCell(value) {
+  return String(value).replaceAll("|", "\\|").replaceAll("\n", " ");
+}
+
+function markdownTable(headers, rows) {
+  const head = `| ${headers.map(markdownCell).join(" | ")} |`;
+  const rule = `| ${headers.map(() => "---").join(" | ")} |`;
+  const body = rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`).join("\n");
+  return `${head}\n${rule}\n${body}`;
 }
 
 let reportPaths;
@@ -157,18 +161,21 @@ for (const test of tests) {
 const passedAsExpected = tests.length - unexpected.length - flaky.length - skipped.length;
 
 console.log(unexpected.length > 0 ? "❌ Есть падения\n" : "✅ Падений нет\n");
-console.log("Сводка прогона\n");
+console.log("**Сводка прогона**\n");
 console.log(
-  columns([
-    ["Тестов в отчёте", tests.length],
-    ["Прошли", passedAsExpected],
-    ["Дефекты стенда", standFailures.length],
-    ["Новые падения", newFailures.length],
-    ["Прошли со второй попытки", flaky.length],
-    ["Пропущены", skipped.length],
-    ["С повтором", retried.length],
-    ["Длительность работ", duration(elapsed)],
-  ]),
+  markdownTable(
+    ["Показатель", "Значение"],
+    [
+      ["Тестов в отчёте", tests.length],
+      ["Прошли", passedAsExpected],
+      ["Дефекты стенда", standFailures.length],
+      ["Новые падения", newFailures.length],
+      ["Прошли со второй попытки", flaky.length],
+      ["Пропущены", skipped.length],
+      ["С повтором", retried.length],
+      ["Длительность работ", duration(elapsed)],
+    ],
+  ),
 );
 
 const byProject = new Map();
@@ -183,13 +190,14 @@ for (const test of tests) {
 const projectOrder = ["unit", "api", "e2e", "e2e-firefox", "e2e-safari", "e2e-edge"];
 const e2eProjectCount = [...byProject.keys()].filter((name) => name.startsWith("e2e")).length;
 if (e2eProjectCount > 1) {
-  const projectRows = [["Проект", "Тестов", "Падений", "Время"]];
+  const projectRows = [];
   const projects = [...byProject.entries()].sort((left, right) => {
     const leftRank = projectOrder.indexOf(left[0]);
     const rightRank = projectOrder.indexOf(right[0]);
     return (leftRank === -1 ? projectOrder.length : leftRank) - (rightRank === -1 ? projectOrder.length : rightRank);
   });
   for (const [project, bucket] of projects) {
+    if (!String(project).startsWith("e2e")) continue;
     projectRows.push([
       projectLabel[project] ?? project,
       bucket.count,
@@ -197,12 +205,12 @@ if (e2eProjectCount > 1) {
       duration(bucket.durationMs),
     ]);
   }
-  console.log("\nПроекты\n");
-  console.log(columns(projectRows));
+  console.log("\n**Браузеры**\n");
+  console.log(markdownTable(["Проект", "Тестов", "Падений", "Время"], projectRows));
 }
 
 const levelOrder = ["unit", "api", "e2e"];
-const levelRows = [["Уровень", "Тестов", "Время"]];
+const levelRows = [];
 for (const name of [...levels.keys()].sort(
   (left, right) => levelOrder.indexOf(left) - levelOrder.indexOf(right) || left.localeCompare(right),
 )) {
@@ -210,8 +218,8 @@ for (const name of [...levels.keys()].sort(
   levelRows.push([name, bucket.count, duration(bucket.durationMs)]);
 }
 
-console.log("\nУровни пирамиды\n");
-console.log(columns(levelRows));
+console.log("\n**Уровни пирамиды**\n");
+console.log(markdownTable(["Уровень", "Тестов", "Время"], levelRows));
 
 if (tests.some((test) => test.level === "e2e")) {
   const e2eFiles = specFiles("tests").filter((file) => file.includes("/e2e/"));
@@ -222,30 +230,46 @@ if (tests.some((test) => test.level === "e2e")) {
     return source.includes("cleanupUsersViaApi") || source.includes("deleteUserViaApi");
   });
 
-  console.log("\nПодготовка стенда в E2E\n");
+  console.log("\n**Подготовка стенда в E2E**\n");
   console.log(
-    columns([
-      ["Файлов сценариев", e2eFiles.length],
-      ["Регистрируют участника через API", `${arrangedViaApi.length} из ${e2eFiles.length}`],
-      ["Убирают участников после сценария", `${cleanedAfter.length} из ${e2eFiles.length}`],
-    ]),
+    markdownTable(
+      ["Показатель", "Значение"],
+      [
+        ["Файлов сценариев", e2eFiles.length],
+        ["Регистрируют участника через API", `${arrangedViaApi.length} из ${e2eFiles.length}`],
+        ["Убирают участников после сценария", `${cleanedAfter.length} из ${e2eFiles.length}`],
+      ],
+    ),
   );
 }
 
 const slowest = [...tests].sort((left, right) => right.durationMs - left.durationMs).slice(0, 5);
-console.log("\nСамые долгие сценарии\n");
+console.log("\n**Самые долгие сценарии**\n");
 console.log(
-  columns(slowest.map((test) => [duration(test.durationMs), projectLabel[test.project] ?? test.project, test.title])),
+  markdownTable(
+    ["Время", "Проект", "Сценарий"],
+    slowest.map((test) => [duration(test.durationMs), projectLabel[test.project] ?? test.project, test.title]),
+  ),
 );
 
 if (standFailures.length > 0) {
-  console.log("\nДефекты стенда\n");
-  console.log(columns(standFailures.map((test) => [projectLabel[test.project] ?? test.project, test.title])));
+  console.log("\n**Дефекты стенда**\n");
+  console.log(
+    markdownTable(
+      ["Проект", "Сценарий"],
+      standFailures.map((test) => [projectLabel[test.project] ?? test.project, test.title]),
+    ),
+  );
 }
 
 if (newFailures.length > 0) {
-  console.log("\nНовые падения\n");
-  console.log(columns(newFailures.map((test) => [projectLabel[test.project] ?? test.project, test.file, test.title])));
+  console.log("\n**Новые падения**\n");
+  console.log(
+    markdownTable(
+      ["Проект", "Файл", "Сценарий"],
+      newFailures.map((test) => [projectLabel[test.project] ?? test.project, test.file, test.title]),
+    ),
+  );
 }
 
 if (!informOnly && unexpected.length > 0) process.exit(1);
