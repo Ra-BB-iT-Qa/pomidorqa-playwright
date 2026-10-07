@@ -21,6 +21,8 @@ on:
 permissions:
   contents: read
   actions: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: pomidorqa-ci-${{ github.ref }}
@@ -117,17 +119,36 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: blob-pyramid-${{ github.run_id }}
+          path: blob-report/
+          if-no-files-found: warn
+          retention-days: 1
+
   e2e:
-    name: E2E / ${{ matrix.browser }}
+    name: E2E / ${{ matrix.browser }} / ${{ matrix.os == 'windows-latest' && 'Windows' || 'Linux' }}
     needs: [static, pyramid, plan]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      # Два браузера одновременно: третий ждёт, чтобы стенд не делил слоты между всеми сразу.
+      # Две джобы одновременно: третья ждёт, чтобы стенд не делил слоты между всеми сразу.
       max-parallel: 2
       matrix:
+        os: [ubuntu-latest, windows-latest]
         browser: ${{ fromJSON(needs.plan.outputs.browsers) }}
+        exclude:
+          # Движки Firefox и WebKit уже идут на Linux. На Windows остаётся Chromium и, в полном прогоне, Edge.
+          - os: windows-latest
+            browser: firefox
+          - os: windows-latest
+            browser: webkit
+          - os: ubuntu-latest
+            browser: msedge
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -153,13 +174,29 @@ jobs:
           esac
 
       - name: Cache Playwright browser
+        id: playwright-cache
         uses: actions/cache@v4
         with:
-          path: ~/.cache/ms-playwright
+          # Тот же каталог, куда Playwright кладёт браузер сам. Linux-ключ уже есть у прошлых прогонов.
+          path: ${{ runner.os == 'Windows' && '~\AppData\Local\ms-playwright' || '~/.cache/ms-playwright' }}
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}-${{ matrix.browser }}
 
       - name: Install browser
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            npx playwright install --with-deps "$BROWSER"
+          else
+            npx playwright install "$BROWSER"
+          fi
+
+      - name: Install system libraries
+        if: steps.playwright-cache.outputs.cache-hit == 'true' && runner.os == 'Linux'
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: npx playwright install-deps "$BROWSER"
 
       - name: Run E2E
         run: npx playwright test --project=${{ steps.target.outputs.project }} --workers=4 --retries=0
@@ -171,7 +208,7 @@ jobs:
         run: |
           set -o pipefail
           {
-            echo "### E2E / ${{ matrix.browser }}"
+            echo "### E2E / ${{ matrix.browser }} / ${{ matrix.os == 'windows-latest' && 'Windows' || 'Linux' }}"
             echo ""
             node scripts/pyramid-metrics.mjs --inform playwright-report/results.json
           } | tee -a "$GITHUB_STEP_SUMMARY"
@@ -181,7 +218,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: report-e2e-${{ matrix.browser }}-${{ github.run_id }}
+          name: report-e2e-${{ matrix.browser }}-${{ matrix.os }}-${{ github.run_id }}
           path: playwright-report/
           if-no-files-found: warn
           retention-days: 14
@@ -191,17 +228,30 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: test-results-${{ matrix.browser }}-${{ github.run_id }}
+          name: test-results-${{ matrix.browser }}-${{ matrix.os }}-${{ github.run_id }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: blob-e2e-${{ matrix.browser }}-${{ matrix.os }}-${{ github.run_id }}
+          path: blob-report/
+          if-no-files-found: warn
+          retention-days: 1
 
   result:
     name: Result
     if: ${{ always() }}
     needs: [static, pyramid, e2e]
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -213,14 +263,19 @@ jobs:
           pattern: report-*
           path: ci-reports
 
-      - name: Publish result and notify Telegram
+      - name: Download blob reports
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: blob-*
+          path: ci-blobs
+
+      - name: Publish result
         env:
           STATIC: ${{ needs.static.result }}
           PYRAMID: ${{ needs.pyramid.result }}
           E2E: ${{ needs.e2e.result }}
           GH_TOKEN: ${{ github.token }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           label() {
             case "$1" in
@@ -282,10 +337,6 @@ jobs:
             printf '%s\n' "$jobs_tsv" | awk -F '\t' -v n="$1" -v c="$2" '$1 == n { print $c; exit }'
           }
 
-          browser_result() {
-            job_field "$1" 2
-          }
-
           format_span() {
             node -e '
               const [start, end] = process.argv.slice(1);
@@ -311,19 +362,28 @@ jobs:
           e2e_rows=""
           e2e_lines=""
           browser_list=""
-          for pair in "E2E / chromium|E2E Chromium|Chromium" "E2E / firefox|E2E Firefox|Firefox" "E2E / webkit|E2E WebKit|WebKit" "E2E / msedge|E2E Edge|Edge"; do
-            job_name="${pair%%|*}"
-            rest="${pair#*|}"
-            title="${rest%%|*}"
-            short="${rest#*|}"
-            conclusion="$(browser_result "$job_name")"
-            if [[ -z "$conclusion" ]]; then
-              continue
-            fi
-            e2e_rows="${e2e_rows}| ${title} | $(status_cell "$conclusion") | $(job_duration "$job_name") |"$'\n'
-            e2e_lines="${e2e_lines}$(mark "$conclusion") ${title} — $(label "$conclusion")"$'\n'
-            browser_list="${browser_list}${browser_list:+ · }${short}"
-          done
+          os_list=""
+          while IFS=$'\t' read -r job_name conclusion _started _ended; do
+            [[ "$job_name" == E2E\ /* ]] || continue
+            [[ -z "$conclusion" ]] && continue
+            rest="${job_name#E2E / }"
+            browser="${rest%% /*}"
+            os="${rest##*/ }"
+            case "$browser" in
+              chromium) title="Chromium" ;;
+              firefox) title="Firefox" ;;
+              webkit) title="WebKit" ;;
+              msedge) title="Edge" ;;
+              *) title="$browser" ;;
+            esac
+            e2e_rows="${e2e_rows}| E2E ${title} / ${os} | $(status_cell "$conclusion") | $(job_duration "$job_name") |"$'\n'
+            e2e_lines="${e2e_lines}$(mark "$conclusion") E2E ${title} / ${os} — $(label "$conclusion")"$'\n'
+            browser_list="${browser_list}${browser_list:+, }${title}/${os}"
+            case " $os_list " in
+              *" $os "*) ;;
+              *) os_list="${os_list}${os_list:+, }$os" ;;
+            esac
+          done <<< "$jobs_tsv"
 
           if [[ -z "$e2e_rows" ]]; then
             e2e_rows="| E2E | $(status_cell "$E2E") | $(job_duration "E2E / chromium") |"$'\n'
@@ -358,7 +418,7 @@ jobs:
             echo ""
             echo "| Параметр | Значение |"
             echo "| --- | --- |"
-            echo "| Runner | Linux / X64 |"
+            echo "| Runner | ${os_list:-Linux} |"
             echo "| Node.js | \`${node_version}\` |"
             echo "| Стенд | https://aiqa.su |"
             echo "| Браузеры | ${browser_list} |"
@@ -382,23 +442,7 @@ jobs:
             "$(label "$PYRAMID")" \
             "$e2e_lines" \
             "$run_url")
-
-          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
-            echo "::notice::Секреты Telegram не заданы, уведомление пропущено."
-          elif ! curl --silent --show-error --fail-with-body \
-            --retry 2 \
-            --retry-all-errors \
-            --connect-timeout 10 \
-            --max-time 20 \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=${text}" \
-            --data-urlencode "disable_web_page_preview=true" \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            > /tmp/telegram-response.json; then
-            echo "::warning::Telegram не отправился. Результат проверок от этого не меняется."
-          else
-            echo "Telegram notification sent."
-          fi
+          printf '%s\n' "$text" > telegram.txt
 
           if [[ "$STATIC" == "success" && "$PYRAMID" == "success" && "$E2E" == "success" ]]; then
             exit 0
@@ -406,6 +450,89 @@ jobs:
 
           echo "::error::Одна из обязательных проверок не прошла."
           exit 1
+
+      - name: Setup Node.js
+        if: ${{ !cancelled() }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install npm dependencies
+        if: ${{ !cancelled() }}
+        run: npm ci
+
+      - name: Merge Playwright report
+        id: merge
+        if: ${{ !cancelled() }}
+        run: |
+          if ! find ci-blobs -name '*.zip' -print -quit 2>/dev/null | grep -q .; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Blob-отчётов нет, страница Playwright не собралась."
+            exit 0
+          fi
+          mkdir -p all-blobs
+          find ci-blobs -name '*.zip' -exec cp {} all-blobs/ \;
+          npx playwright merge-reports --reporter html all-blobs
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload report page
+        if: ${{ !cancelled() && steps.merge.outputs.ready == 'true' }}
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: playwright-report
+
+      - name: Deploy report page
+        id: pages
+        if: ${{ !cancelled() && steps.merge.outputs.ready == 'true' }}
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+
+      - name: Send Telegram
+        if: ${{ !cancelled() }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PAGE_URL: ${{ steps.pages.outputs.page_url }}
+        run: |
+          if [[ ! -f telegram.txt ]]; then
+            echo "::warning::Текст уведомления не собрался."
+            exit 0
+          fi
+          text=$(cat telegram.txt)
+          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
+            echo "::notice::Секреты Telegram не заданы, уведомление пропущено."
+            exit 0
+          fi
+
+          curl_args=(
+            --silent
+            --show-error
+            --fail-with-body
+            --retry 2
+            --retry-all-errors
+            --connect-timeout 10
+            --max-time 20
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}"
+          )
+
+          if [[ -n "$PAGE_URL" ]]; then
+            text=$(printf 'Отчёт Playwright: %s\n\n%s' "$PAGE_URL" "$text")
+            curl_args+=(--data-urlencode "disable_web_page_preview=false")
+            curl_args+=(--data-urlencode "reply_markup={\"inline_keyboard\":[[{\"text\":\"Открыть отчёт\",\"url\":\"${PAGE_URL}\"}]]}")
+          else
+            curl_args+=(--data-urlencode "disable_web_page_preview=true")
+          fi
+
+          curl_args+=(--data-urlencode "text=${text}")
+          curl_args+=("https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage")
+
+          if ! curl "${curl_args[@]}" > /tmp/telegram-response.json; then
+            echo "::warning::Telegram не отправился. Результат проверок от этого не меняется."
+          else
+            echo "Telegram notification sent."
+          fi
 
       - name: Upload run metrics
         if: ${{ always() }}

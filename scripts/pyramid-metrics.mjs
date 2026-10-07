@@ -28,6 +28,12 @@ const projectLabel = {
   "e2e-edge": "e2e edge",
 };
 
+const platformLabel = {
+  linux: "Linux",
+  win32: "Windows",
+  darwin: "macOS",
+};
+
 function posix(value) {
   return value.replaceAll("\\", "/");
 }
@@ -130,6 +136,7 @@ for (const reportPath of reportPaths) {
       tests,
       wallClockMs: report.stats?.duration == null ? null : Math.round(report.stats.duration),
       workers: report.config?.workers ?? null,
+      platform: report.config?.metadata?.platform ?? null,
       retries,
     });
   } catch (error) {
@@ -238,6 +245,25 @@ for (const name of [...levels.keys()].sort(
   levelRows.push([name, bucket.count, duration(bucket.durationMs)]);
 }
 
+if (reports.length > 1) {
+  console.log("\n**Прогоны**\n");
+  console.log(
+    markdownTable(
+      ["Проект", "ОС", "Тестов", "Падений", "Время прогона"],
+      reports.map((report) => {
+        const names = [...new Set(report.tests.map((test) => test.project))];
+        return [
+          names.map((name) => projectLabel[name] ?? name).join(", "),
+          platformLabel[report.platform] ?? report.platform ?? "—",
+          report.tests.length,
+          report.tests.filter((test) => test.status === "unexpected").length,
+          report.wallClockMs == null ? "—" : duration(report.wallClockMs),
+        ];
+      }),
+    ),
+  );
+}
+
 console.log("\n**Уровни пирамиды**\n");
 console.log(markdownTable(["Уровень", "Тестов", "Сумма сценариев"], levelRows));
 
@@ -305,6 +331,7 @@ const metrics = {
     projects: [...new Set(report.tests.map((test) => test.project))],
     wallClockMs: report.wallClockMs,
     workers: report.workers,
+    platform: report.platform,
     retries: report.retries,
     tests: report.tests.length,
     failed: report.tests.filter((test) => test.status === "unexpected").length,

@@ -14,6 +14,7 @@ const reporter: ReporterDescription[] = process.env.CI
       ["list"],
       ["html", { open: "never" }],
       ["json", { outputFile: "playwright-report/results.json" }],
+      ["blob", { outputDir: "blob-report" }],
     ]
   : [["list"], ["html", { open: "on-failure" }]];
 
@@ -25,6 +26,9 @@ export default defineConfig({
   // В CI у каждого job матрицы четыре воркера. Локально Playwright берёт половину ядер.
   workers: process.env.CI ? 4 : undefined,
   reporter,
+  metadata: {
+    platform: process.platform,
+  },
   projects: [
     {
       name: "unit",

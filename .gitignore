@@ -1,5 +1,7 @@
 node_modules/
 playwright-report/
+blob-report/
+ms-playwright/
 test-results/
 reports/
 .env
