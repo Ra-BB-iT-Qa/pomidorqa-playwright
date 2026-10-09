@@ -23,8 +23,8 @@ export default defineConfig({
   fullyParallel: false,
   // Повтор выключен: падение видно сразу, а время прогона не удваивается.
   retries: 0,
-  // В CI у каждого job матрицы четыре воркера. Локально Playwright берёт половину ядер.
-  workers: process.env.CI ? 4 : undefined,
+  // Четыре воркера и локально, и в CI: половина ядер (здесь 6) валит стенд 502.
+  workers: 4,
   reporter,
   metadata: {
     platform: process.platform,

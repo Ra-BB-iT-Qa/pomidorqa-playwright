@@ -17,6 +17,7 @@ test.describe("Каталог", () => {
   test("В каталоге только участники со свободным слотом в будущем, в поиске себя не видно", async ({
     browser,
   }) => {
+    test.setTimeout(240_000);
     const runId = Date.now();
     const skillTag = `Help-${runId}`;
     const date = tomorrowDate(ZONE);

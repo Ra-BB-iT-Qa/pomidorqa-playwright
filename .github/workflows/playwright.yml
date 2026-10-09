@@ -136,8 +136,8 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      # Две джобы одновременно: третья ждёт, чтобы стенд не делил слоты между всеми сразу.
-      max-parallel: 2
+      # Одна джоба за раз. Две по 4 воркера уже роняют стенд: 502 и account_create_failed.
+      max-parallel: 1
       matrix:
         os: [ubuntu-latest, windows-latest]
         browser: ${{ fromJSON(needs.plan.outputs.browsers) }}
@@ -423,7 +423,7 @@ jobs:
             echo "| Стенд | https://aiqa.su |"
             echo "| Браузеры | ${browser_list} |"
             echo "| Воркеры внутри job | 4 |"
-            echo "| Джобы матрицы одновременно | 2 |"
+            echo "| Джобы матрицы одновременно | 1 |"
             echo "| Повторы | 0 |"
             echo ""
             echo "Прогон: ${run_url}"
