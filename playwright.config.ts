@@ -21,8 +21,8 @@ const reporter: ReporterDescription[] = process.env.CI
 export default defineConfig({
   timeout: 30_000,
   fullyParallel: false,
-  // Повтор выключен: падение видно сразу, а время прогона не удваивается.
-  retries: 0,
+  // Один повтор: 502 стенда на регистрации не валит прогон с первого раза.
+  retries: 1,
   // Четыре воркера и локально, и в CI: половина ядер (здесь 6) валит стенд 502.
   workers: 4,
   reporter,

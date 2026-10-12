@@ -114,7 +114,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: report-pyramid-${{ github.run_id }}
+          name: report-unit-api
           path: playwright-report/
           if-no-files-found: warn
           retention-days: 14
@@ -124,7 +124,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: blob-pyramid-${{ github.run_id }}
+          name: blob-unit-api
           path: blob-report/
           if-no-files-found: warn
           retention-days: 1
@@ -172,6 +172,11 @@ jobs:
             msedge) echo "project=e2e-edge" >> "$GITHUB_OUTPUT" ;;
             *) echo "::error::Неизвестный браузер ${{ matrix.browser }}" && exit 1 ;;
           esac
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            echo "os=Windows" >> "$GITHUB_OUTPUT"
+          else
+            echo "os=Linux" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Cache Playwright browser
         id: playwright-cache
@@ -218,7 +223,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: report-e2e-${{ matrix.browser }}-${{ matrix.os }}-${{ github.run_id }}
+          name: playwright-report-${{ matrix.browser }}-${{ steps.target.outputs.os }}
           path: playwright-report/
           if-no-files-found: warn
           retention-days: 14
@@ -228,7 +233,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: test-results-${{ matrix.browser }}-${{ matrix.os }}-${{ github.run_id }}
+          name: test-results-${{ matrix.browser }}-${{ steps.target.outputs.os }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
@@ -238,7 +243,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: blob-e2e-${{ matrix.browser }}-${{ matrix.os }}-${{ github.run_id }}
+          name: blob-e2e-${{ matrix.browser }}-${{ steps.target.outputs.os }}
           path: blob-report/
           if-no-files-found: warn
           retention-days: 1
@@ -260,7 +265,7 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
-          pattern: report-*
+          pattern: "*report*"
           path: ci-reports
 
       - name: Download blob reports
@@ -476,6 +481,16 @@ jobs:
           npx playwright merge-reports --reporter html all-blobs
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
+      - name: Upload merged Playwright report
+        if: ${{ !cancelled() && steps.merge.outputs.ready == 'true' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload report page
         if: ${{ !cancelled() && steps.merge.outputs.ready == 'true' }}
         continue-on-error: true
@@ -539,7 +554,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: ci-metrics-${{ github.run_id }}
+          name: ci-metrics
           path: ci-reports/metrics.json
           if-no-files-found: warn
           retention-days: 14
