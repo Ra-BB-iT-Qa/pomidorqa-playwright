@@ -1,32 +1,15 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, openBookingModal, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, openBookingModal, ROUTES } from "../helpers/user";
 import { openGuest, openParticipant } from "../helpers/actor";
 import { LoginPage } from "../Pages/login-page";
 import { RegisterPage } from "../Pages/register-page";
 
-const accountContexts: BrowserContext[] = [];
-const guestContexts: BrowserContext[] = [];
-
-test.afterEach(async () => {
-  await cleanupUsersViaApi(accountContexts);
-  accountContexts.length = 0;
-  await Promise.all(
-    guestContexts.splice(0).map(async (context) => {
-      try {
-        await context.close();
-      } catch (reason) {
-        console.warn("Браузерный контекст уже закрыт:", reason);
-      }
-    })
-  );
-});
-
 test.describe("Гость", () => {
-  test("гость видит каталог и свободные слоты, но не может забронировать", async ({ browser }) => {
+  test("гость видит каталог и свободные слоты, но не может забронировать", async ({ browser, accountContexts }) => {
     const runId = Date.now();
     const skillTag = `Korozia-metal-${runId}`;
     const host = await openParticipant(browser, accountContexts, makeUser("Pank", runId));
-    const guest = await openGuest(browser, guestContexts);
+    const guest = await openGuest(browser, accountContexts);
 
     await test.step("Хост: регистрируется в PomidorQA", async () => {
       await registerUserViaApi(host.page, host.user);
@@ -108,8 +91,8 @@ test.describe("Гость", () => {
     });
   });
 
-  test("кнопки «Зарегистрироваться» и «Войти» открывают регистрацию и вход", async ({ browser }) => {
-    const guest = await openGuest(browser, guestContexts);
+  test("кнопки «Зарегистрироваться» и «Войти» открывают регистрацию и вход", async ({ browser, accountContexts }) => {
+    const guest = await openGuest(browser, accountContexts);
     const register = new RegisterPage(guest.page);
     const login = new LoginPage(guest.page);
 
@@ -145,8 +128,8 @@ test.describe("Гость", () => {
     });
   });
 
-  test("в шапке нет действий пользователя, а закрытые адреса открывают вход", async ({ browser }) => {
-    const guest = await openGuest(browser, guestContexts);
+  test("в шапке нет действий пользователя, а закрытые адреса открывают вход", async ({ browser, accountContexts }) => {
+    const guest = await openGuest(browser, accountContexts);
     const login = new LoginPage(guest.page);
 
     await test.step("Гость: открывает каталог", async () => {

@@ -1,5 +1,5 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, ROUTES } from "../helpers/user";
 import { openGuest, openParticipant } from "../helpers/actor";
 import { tomorrowDate } from "../helpers/time";
 
@@ -7,29 +7,12 @@ const ZONE = "Europe/Moscow";
 const SLOT_TIME = "12:00";
 
 test.describe("Свой слот", () => {
-  const accountContexts: BrowserContext[] = [];
-  const guestContexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    await cleanupUsersViaApi(accountContexts);
-    accountContexts.length = 0;
-    await Promise.all(
-      guestContexts.splice(0).map(async (context) => {
-        try {
-          await context.close();
-        } catch (reason) {
-          console.warn("Браузерный контекст уже закрыт:", reason);
-        }
-      }),
-    );
-  });
-
-  test("Нельзя забронировать свой слот по прямой ссылке", async ({ browser }) => {
+  test("Нельзя забронировать свой слот по прямой ссылке", async ({ browser, accountContexts }) => {
     const runId = Date.now();
     const skillTag = `Help-${runId}`;
     const date = tomorrowDate(ZONE);
     const host = await openParticipant(browser, accountContexts, makeUser(`Ember${runId}`, runId));
-    const guest = await openGuest(browser, guestContexts);
+    const guest = await openGuest(browser, accountContexts);
 
     await test.step("Хост: регистрируется в PomidorQA", async () => {
       await registerUserViaApi(host.page, host.user);

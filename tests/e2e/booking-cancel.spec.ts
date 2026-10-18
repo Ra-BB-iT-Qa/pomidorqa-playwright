@@ -1,18 +1,11 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, openBookingModal, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, openBookingModal, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
 import { tomorrowDate } from "../helpers/time";
 
 
 test.describe("Отмену бронирования видят и хост и гость", () => {
-    const accountContexts: BrowserContext[] = [];
-
-    test.afterEach(async () => {
-        await cleanupUsersViaApi(accountContexts);
-        accountContexts.length = 0;
-    });
-
-    test("Отмену бронирования видят и хост и гость", async ({ browser }) => { 
+    test("Отмену бронирования видят и хост и гость", async ({ browser, accountContexts }) => { 
   const runId = Date.now();
   const skillTag = `Korozia-metal-${runId}`;
   const host = await openParticipant(browser, accountContexts, makeUser("Pank", runId));
@@ -111,7 +104,7 @@ test.describe("Отмену бронирования видят и хост и �
       });
     });
 
-    test("хост отменяет бронирование, и встреча оказывается среди прошедших", async ({ browser }) => {
+    test("хост отменяет бронирование, и встреча оказывается среди прошедших", async ({ browser, accountContexts }) => {
       const runId = Date.now();
       const skillTag = `Help-${runId}`;
       const slotTime = "12:00";

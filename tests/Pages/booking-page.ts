@@ -88,7 +88,15 @@ export class BookingPage {
     }
 
     async openPerson(name: string) {
-        await this.personCard(name).click();
+        const card = this.personCard(name);
+        const personHeading = this.page.getByRole("heading", { level: 1, name, exact: true });
+        await card.click();
+        try {
+            await personHeading.waitFor({ timeout: 5_000 });
+        } catch {
+            await card.click();
+            await personHeading.waitFor();
+        }
     }
 
     async personPath(name: string) {

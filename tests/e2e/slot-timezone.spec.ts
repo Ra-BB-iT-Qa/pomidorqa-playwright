@@ -1,5 +1,5 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
 
 const HOST_TIMEZONE = "Asia/Yekaterinburg";
@@ -7,14 +7,7 @@ const GUEST_TIMEZONE = "Europe/Kaliningrad";
 const SLOT_TIME = "15:00";
 
 test.describe("Часовой пояс слота", () => {
-  const accountContexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    await cleanupUsersViaApi(accountContexts);
-    accountContexts.length = 0;
-  });
-
-  test("Гость видит слот в часовом поясе хоста", async ({ browser }) => {
+  test("Гость видит слот в часовом поясе хоста", async ({ browser, accountContexts }) => {
     const runId = Date.now();
     const skillTag = `Korozia-metal-${runId}`;
     const slotDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);

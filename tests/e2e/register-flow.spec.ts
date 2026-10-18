@@ -1,5 +1,5 @@
-import { test, expect } from "@playwright/test";
-import { TestUser, makeUser, deleteUserViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { TestUser, makeUser, ROUTES } from "../helpers/user";
 import { RegisterPage } from "../Pages/register-page";
 import { ProfilePage } from "../Pages/profile-page";
 
@@ -13,16 +13,6 @@ test.describe("Регистрация", () => {
     registerPage = new RegisterPage(page);
     profilePage = new ProfilePage(page);
     await registerPage.open();
-  });
-
-  test.afterEach(async ({ page }) => {
-    await deleteUserViaApi(page.context().request).catch((reason: unknown) => {
-      const message = reason instanceof Error ? reason.message : String(reason);
-      if (message.includes("401") || message.includes("404")) {
-        return;
-      }
-      throw reason;
-    });
   });
 
   test("Нельзя зарегистрироваться без имени", async () => {

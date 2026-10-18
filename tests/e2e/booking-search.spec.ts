@@ -1,17 +1,11 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, openBookingModal, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, openBookingModal, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
 
 test.describe("После резервирования слота карточка пропадает из поиска", () => {
-  const accountContexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    await cleanupUsersViaApi(accountContexts);
-    accountContexts.length = 0;
-  });
-
   test("После резервирования слота карточка хоста пропадает из каталога для других участников", async ({
     browser,
+    accountContexts,
   }) => {
     const runId = Date.now();
     const skillTag = `Korozia-metal-${runId}`;

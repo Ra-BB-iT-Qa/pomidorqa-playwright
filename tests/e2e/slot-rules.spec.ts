@@ -1,5 +1,5 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
 import { pastClock, shiftClock, tomorrowDate } from "../helpers/time";
 
@@ -8,14 +8,7 @@ const SLOT_MINUTES = 25;
 const FIRST_SLOT_TIME = "15:00";
 
 test.describe("Слоты", () => {
-  const accountContexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    await cleanupUsersViaApi(accountContexts);
-    accountContexts.length = 0;
-  });
-
-  test("нельзя создать слот в прошлом", async ({ browser }) => {
+  test("нельзя создать слот в прошлом", async ({ browser, accountContexts }) => {
     const host = await openParticipant(browser, accountContexts, makeUser("Pank", Date.now()));
     const past = pastClock(ZONE);
 
@@ -40,7 +33,7 @@ test.describe("Слоты", () => {
     });
   });
 
-  test("нельзя создать слот раньше чем через 25 минут после первого", async ({ browser }) => {
+  test("нельзя создать слот раньше чем через 25 минут после первого", async ({ browser, accountContexts }) => {
     const host = await openParticipant(browser, accountContexts, makeUser("Pank", Date.now()));
     const date = tomorrowDate(ZONE);
     const tooSoon = shiftClock(date, FIRST_SLOT_TIME, SLOT_MINUTES - 1);
@@ -75,7 +68,7 @@ test.describe("Слоты", () => {
     });
   });
 
-  test("слот ровно через 25 минут после первого создаётся", async ({ browser }) => {
+  test("слот ровно через 25 минут после первого создаётся", async ({ browser, accountContexts }) => {
     const host = await openParticipant(browser, accountContexts, makeUser("Pank", Date.now()));
     const date = tomorrowDate(ZONE);
     const exact = shiftClock(date, FIRST_SLOT_TIME, SLOT_MINUTES);
@@ -107,7 +100,7 @@ test.describe("Слоты", () => {
     });
   });
 
-  test("нельзя забронировать слот раньше чем через 25 минут после первого", async ({ browser }) => {
+  test("нельзя забронировать слот раньше чем через 25 минут после первого", async ({ browser, accountContexts }) => {
     const runId = Date.now();
     const firstSkill = `Help-${runId}`;
     const secondSkill = `Next-${runId}`;
@@ -252,7 +245,7 @@ test.describe("Слоты", () => {
     });
   });
 
-  test("слот ровно через 25 минут после первого можно забронировать", async ({ browser }) => {
+  test("слот ровно через 25 минут после первого можно забронировать", async ({ browser, accountContexts }) => {
     const runId = Date.now();
     const skillTag = `Help-${runId}`;
     const host = await openParticipant(browser, accountContexts, makeUser("Cody", runId));
@@ -351,7 +344,7 @@ test.describe("Слоты", () => {
     });
   });
 
-  test("нельзя удалить забронированный слот", async ({ browser }) => {
+  test("нельзя удалить забронированный слот", async ({ browser, accountContexts }) => {
     const runId = Date.now();
     const skillTag = `Help-${runId}`;
     const host = await openParticipant(browser, accountContexts, makeUser("Rex", runId));
@@ -433,7 +426,7 @@ test.describe("Слоты", () => {
     });
   });
 
-  test("в форме слота только дата и время начала", async ({ browser }) => {
+  test("в форме слота только дата и время начала", async ({ browser, accountContexts }) => {
     const host = await openParticipant(browser, accountContexts, makeUser("Pank", Date.now()));
 
     await test.step("Хост: регистрируется в PomidorQA", async () => {
@@ -453,7 +446,7 @@ test.describe("Слоты", () => {
     });
   });
 
-  test("свободный слот удаляется", async ({ browser }) => {
+  test("свободный слот удаляется", async ({ browser, accountContexts }) => {
     const host = await openParticipant(browser, accountContexts, makeUser("Pank", Date.now()));
     const date = tomorrowDate(ZONE);
 

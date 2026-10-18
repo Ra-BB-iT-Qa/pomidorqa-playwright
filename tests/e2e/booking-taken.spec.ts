@@ -1,5 +1,5 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
 import { tomorrowDate } from "../helpers/time";
 
@@ -8,14 +8,7 @@ const SLOT_TIME = "12:00";
 const TAKEN_ERROR = "Этот слот только что забронировали — выбери другой";
 
 test.describe("Занятый слот", () => {
-  const accountContexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    await cleanupUsersViaApi(accountContexts);
-    accountContexts.length = 0;
-  });
-
-  test("Второй гость видит, что слот занят, и предложение выбрать другой", async ({ browser }) => {
+  test("Второй гость видит, что слот занят, и предложение выбрать другой", async ({ browser, accountContexts }) => {
     const runId = Date.now();
     const skillTag = `Help-${runId}`;
     const host = await openParticipant(browser, accountContexts, makeUser("Pank", runId));

@@ -1,5 +1,6 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { TestUser, makeUser, registerUserViaApi, deleteUserViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import type { BrowserContext } from "@playwright/test";
+import { TestUser, makeUser, registerUserViaApi, ROUTES } from "../helpers/user";
 import { expectOutsideAccount, leaveAccount } from "../helpers/session";
 import { LoginPage } from "../Pages/login-page";
 import { BookingPage } from "../Pages/booking-page";
@@ -20,18 +21,12 @@ test.describe("Вход", () => {
     await loginPage.open();
   });
 
+  // Фикстура page удаляет аккаунт после этого хука, поэтому сессию возвращаем здесь.
   test.afterEach(async ({ page }) => {
     if (sessionCookies.length > 0) {
       await page.context().clearCookies();
       await page.context().addCookies(sessionCookies);
     }
-    await deleteUserViaApi(page.context().request).catch((reason: unknown) => {
-      const message = reason instanceof Error ? reason.message : String(reason);
-      if (message.includes("401") || message.includes("404")) {
-        return;
-      }
-      throw reason;
-    });
   });
 
   test("нельзя войти с пустыми данными", async () => {

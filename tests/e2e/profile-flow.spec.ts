@@ -1,5 +1,5 @@
-import { test, expect } from "@playwright/test";
-import { TestUser, makeUser, registerUserViaApi, changeUserName, deleteUserViaApi } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { TestUser, makeUser, registerUserViaApi, changeUserName } from "../helpers/user";
 import { ProfilePage } from "../Pages/profile-page";
 
 
@@ -15,12 +15,6 @@ import { ProfilePage } from "../Pages/profile-page";
         await registerUserViaApi(page, user);
         await profilePage.page.goto("/pomidorqa/profile");
         await expect(profilePage.page).toHaveURL(/\/pomidorqa\/profile/);
-    });
-
-    test.afterEach(async ({ page }) => {
-        await deleteUserViaApi(page.context().request).catch((reason: unknown) => {
-            console.warn("Не удалось удалить тестового участника:", reason);
-        });
     });
 
     test("Смена имени в профиле", async () => {

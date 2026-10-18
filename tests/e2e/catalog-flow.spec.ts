@@ -1,5 +1,5 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
 import { tomorrowDate } from "../helpers/time";
 
@@ -7,15 +7,9 @@ const ZONE = "Europe/Moscow";
 const SLOT_TIME = "12:00";
 
 test.describe("Каталог", () => {
-  const accountContexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    await cleanupUsersViaApi(accountContexts);
-    accountContexts.length = 0;
-  });
-
   test("В каталоге только участники со свободным слотом в будущем, в поиске себя не видно", async ({
     browser,
+    accountContexts,
   }) => {
     test.setTimeout(240_000);
     const runId = Date.now();
@@ -169,7 +163,7 @@ test.describe("Каталог", () => {
     });
   });
 
-  test("Поиск по навыку не показывает участника только с «хочу разобрать»", async ({ browser }) => {
+  test("Поиск по навыку не показывает участника только с «хочу разобрать»", async ({ browser, accountContexts }) => {
     const runId = Date.now();
     const skillTag = `Learn-${runId}`;
     const date = tomorrowDate(ZONE);

@@ -1,5 +1,5 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
 import { futureSlotClock, shiftClock, zonedInstant } from "../helpers/time";
 
@@ -19,14 +19,7 @@ function clockPastBoundary(offsetMinutes: number): { date: string; time: string 
 }
 
 test.describe("Срок отмены бронирования", () => {
-  const accountContexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    await cleanupUsersViaApi(accountContexts);
-    accountContexts.length = 0;
-  });
-
-  test("Нельзя отменить бронирование меньше чем за 2 часа", async ({ browser }) => {
+  test("Нельзя отменить бронирование меньше чем за 2 часа", async ({ browser, accountContexts }) => {
     test.setTimeout(120_000);
     const runId = Date.now();
     const skillTag = `Help-${runId}`;
@@ -124,7 +117,7 @@ test.describe("Срок отмены бронирования", () => {
     });
   });
 
-  test("Можно отменить бронирование за 2 часа", async ({ browser }) => {
+  test("Можно отменить бронирование за 2 часа", async ({ browser, accountContexts }) => {
     test.setTimeout(180_000);
     const runId = Date.now();
     const skillTag = `Help-${runId}`;
@@ -231,7 +224,7 @@ test.describe("Срок отмены бронирования", () => {
     });
   });
 
-  test("За 2 часа и 1 минуту отмена проходит, и слот бронирует другой гость", async ({ browser }) => {
+  test("За 2 часа и 1 минуту отмена проходит, и слот бронирует другой гость", async ({ browser, accountContexts }) => {
     test.setTimeout(180_000);
     const runId = Date.now();
     const skillTag = `Help-${runId}`;

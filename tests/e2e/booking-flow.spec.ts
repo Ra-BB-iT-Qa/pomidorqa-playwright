@@ -1,16 +1,10 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, openBookingModal, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, openBookingModal, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
-
-const accountContexts: BrowserContext[] = [];
-
-test.afterEach(async () => {
-  await cleanupUsersViaApi(accountContexts);
-  accountContexts.length = 0;
-});
 
 test("основной путь: регистрация → навык → слот → поиск в каталоге → бронирование → «Мои встречи» у обоих", async ({
   browser,
+  accountContexts,
 }) => { 
   const runId = Date.now();
   const skillTag = `Korozia-metal-${runId}`;

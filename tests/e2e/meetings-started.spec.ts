@@ -1,5 +1,5 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
 import { futureSlotClock, zonedInstant } from "../helpers/time";
 
@@ -8,14 +8,7 @@ const PAST_GRACE_MS = 15_000;
 const SLOT_LEAD_MIN_MS = 40_000;
 
 test.describe("Мои встречи", () => {
-  const accountContexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    await cleanupUsersViaApi(accountContexts);
-    accountContexts.length = 0;
-  });
-
-  test("начавшаяся встреча переходит из Ближайшие в Прошедшие и отменённые", async ({ browser }) => {
+  test("начавшаяся встреча переходит из Ближайшие в Прошедшие и отменённые", async ({ browser, accountContexts }) => {
     test.setTimeout(240_000);
     const runId = Date.now();
     const skillTag = `Help-${runId}`;

@@ -1,5 +1,5 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
 import { futureSlotClock, zonedInstant } from "../helpers/time";
 
@@ -9,14 +9,7 @@ const SLOT_LEAD_MIN_MS = 30_000;
 const SLOT_LEAD_MAX_MS = 45_000;
 
 test.describe("Бронирование слота в прошлом", () => {
-  const accountContexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    await cleanupUsersViaApi(accountContexts);
-    accountContexts.length = 0;
-  });
-
-  test("Нельзя забронировать слот, который уже начался", async ({ browser }) => {
+  test("Нельзя забронировать слот, который уже начался", async ({ browser, accountContexts }) => {
     test.setTimeout(240_000);
     const runId = Date.now();
     const skillTag = `Help-${runId}`;

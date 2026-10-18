@@ -1,5 +1,5 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { TestUser, makeUser, registerUserViaApi, deleteUserViaApi, openBookingModal, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { TestUser, makeUser, registerUserViaApi, openBookingModal, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
 import { ProfilePage } from "../Pages/profile-page";
 import { MySlotsPage } from "../Pages/my-slots-page";
@@ -16,16 +16,6 @@ test.describe("Навыки", () => {
       mySlotsPage = new MySlotsPage(page);
       await registerUserViaApi(page, user);
       await page.goto(ROUTES.profile);
-    });
-
-    test.afterEach(async ({ page }) => {
-      await deleteUserViaApi(page.context().request).catch((reason: unknown) => {
-        const message = reason instanceof Error ? reason.message : String(reason);
-        if (message.includes("401") || message.includes("404")) {
-          return;
-        }
-        throw reason;
-      });
     });
 
     test("навык «хочу разобрать» появляется в профиле", async () => {
@@ -176,14 +166,7 @@ test.describe("Навыки", () => {
   });
 
   test.describe("при бронировании", () => {
-    const accountContexts: BrowserContext[] = [];
-
-    test.afterEach(async () => {
-      await cleanupUsersViaApi(accountContexts);
-      accountContexts.length = 0;
-    });
-
-    test("хост убирает навык «хочу разобрать», когда слот уже забронирован", async ({ browser }) => {
+    test("хост убирает навык «хочу разобрать», когда слот уже забронирован", async ({ browser, accountContexts }) => {
       const runId = Date.now();
       const helpTag = `Help-${runId}`;
       const wantTag = `Want-${runId}`;
@@ -283,7 +266,7 @@ test.describe("Навыки", () => {
       });
     });
 
-    test("хост убирает навык «могу помочь», когда слот уже забронирован", async ({ browser }) => {
+    test("хост убирает навык «могу помочь», когда слот уже забронирован", async ({ browser, accountContexts }) => {
       const runId = Date.now();
       const helpTag = `Help-${runId}`;
       const host = await openParticipant(browser, accountContexts, makeUser("Cody", runId));

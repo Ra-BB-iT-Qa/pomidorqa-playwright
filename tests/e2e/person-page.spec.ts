@@ -1,5 +1,5 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
-import { makeUser, registerUserViaApi, cleanupUsersViaApi, ROUTES } from "../helpers/user";
+import { test, expect } from "../unit/fixtures/fixtures";
+import { makeUser, registerUserViaApi, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
 import { shiftClock, tomorrowDate } from "../helpers/time";
 
@@ -7,14 +7,7 @@ const ZONE = "Europe/Moscow";
 const SLOT_TIME = "12:00";
 
 test.describe("Страница участника", () => {
-  const accountContexts: BrowserContext[] = [];
-
-  test.afterEach(async () => {
-    await cleanupUsersViaApi(accountContexts);
-    accountContexts.length = 0;
-  });
-
-  test("на странице участника видны информация о себе, оба навыка и свободный слот на 25 минут", async ({ browser }) => {
+  test("на странице участника видны информация о себе, оба навыка и свободный слот на 25 минут", async ({ browser, accountContexts }) => {
     test.setTimeout(150_000);
     const runId = Date.now();
     const helpTag = `Help-${runId}`;
@@ -107,7 +100,7 @@ test.describe("Страница участника", () => {
     });
   });
 
-  test("забронированный слот не показывается на странице участника", async ({ browser }) => {
+  test("забронированный слот не показывается на странице участника", async ({ browser, accountContexts }) => {
     const runId = Date.now();
     const skillTag = `Help-${runId}`;
     const laterTime = shiftClock(tomorrowDate(ZONE), SLOT_TIME, 25).time;
