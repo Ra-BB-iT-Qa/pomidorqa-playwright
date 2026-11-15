@@ -1,22 +1,13 @@
 import { test, expect } from "../unit/fixtures/fixtures";
 import { makeUser, registerUserViaApi, ROUTES } from "../helpers/user";
 import { openParticipant } from "../helpers/actor";
-import { futureSlotClock, shiftClock, zonedInstant } from "../helpers/time";
+import { clockPastLead, futureSlotClock, leadSlackMs } from "../helpers/time";
 
 const ZONE = "Europe/Moscow";
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 const WAIT_MS = 60_000;
 const CANCEL_MARGIN_MS = 45_000;
 const CANCEL_TOO_LATE = "Отменить встречу можно не позже чем за 2 часа до начала. Напиши собеседнику в Telegram.";
-
-function slackMs(slot: { date: string; time: string }): number {
-  return zonedInstant(slot.date, slot.time, ZONE) - Date.now() - TWO_HOURS_MS;
-}
-
-function clockPastBoundary(offsetMinutes: number): { date: string; time: string } {
-  const edge = futureSlotClock(ZONE, TWO_HOURS_MS);
-  return shiftClock(edge.date, edge.time, offsetMinutes);
-}
 
 test.describe("Срок отмены бронирования", () => {
   test("Нельзя отменить бронирование меньше чем за 2 часа", async ({ browser, accountContexts }) => {
@@ -47,8 +38,7 @@ test.describe("Срок отмены бронирования", () => {
       await host.page.goto(ROUTES.mySlots);
     });
 
-    const edge = futureSlotClock(ZONE, TWO_HOURS_MS);
-    const slot = shiftClock(edge.date, edge.time, -1);
+    const slot = clockPastLead(ZONE, TWO_HOURS_MS, -1);
 
     await test.step("Хост: добавляет слот на минуту раньше границы 2 часов", async () => {
       await host.slots.addSlot(slot.date, slot.time);
@@ -151,7 +141,7 @@ test.describe("Срок отмены бронирования", () => {
         .poll(
           () => {
             slot = futureSlotClock(ZONE, TWO_HOURS_MS);
-            return slackMs(slot);
+            return leadSlackMs(slot, ZONE, TWO_HOURS_MS);
           },
           { timeout: WAIT_MS, intervals: [1_000] },
         )
@@ -231,7 +221,7 @@ test.describe("Срок отмены бронирования", () => {
     const host = await openParticipant(browser, accountContexts, makeUser("Rex", runId));
     const guest = await openParticipant(browser, accountContexts, makeUser("Nova", runId));
     const guest2 = await openParticipant(browser, accountContexts, makeUser("Iris", runId));
-    let slot = clockPastBoundary(1);
+    let slot = clockPastLead(ZONE, TWO_HOURS_MS, 1);
 
     await test.step("Хост: регистрируется в PomidorQA", async () => {
       await registerUserViaApi(host.page, host.user);
@@ -258,8 +248,8 @@ test.describe("Срок отмены бронирования", () => {
       await expect
         .poll(
           () => {
-            slot = clockPastBoundary(1);
-            return slackMs(slot);
+            slot = clockPastLead(ZONE, TWO_HOURS_MS, 1);
+            return leadSlackMs(slot, ZONE, TWO_HOURS_MS);
           },
           { timeout: WAIT_MS, intervals: [1_000] },
         )

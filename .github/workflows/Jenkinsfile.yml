@@ -1,0 +1,71 @@
+pipeline {
+  agent { docker { image 'node:24-bookworm'; args '-u root' } }
+  options {
+    timeout(time: 60, unit: 'MINUTES')
+    disableConcurrentBuilds(abortPrevious: true)
+    timestamps()
+  }
+  parameters {
+    choice(name: 'BROWSERS', choices: ['all', 'chromium'], description: 'Браузеры E2E')
+  }
+  environment { CI = 'true' }
+
+  stages {
+    stage('Install') { steps { sh 'npm ci' } }
+
+    stage('Typecheck and lint') {
+      steps {
+        sh 'npm run typecheck'
+        sh 'npm run lint'
+      }
+    }
+
+    stage('Unit and API') {
+      steps {
+        sh 'npm run test:pyramid'
+      }
+      post {
+        always {
+          sh 'mkdir -p reports/unit-api && cp -r playwright-report/. reports/unit-api/ || true'
+        }
+      }
+    }
+
+    stage('E2E') {
+      steps {
+        script {
+          def targets = [[name: 'chromium', project: 'e2e']]
+          if (params.BROWSERS == 'all') {
+            targets += [[name: 'firefox', project: 'e2e-firefox'],
+                        [name: 'webkit',  project: 'e2e-safari']]
+          }
+          for (t in targets) {
+            def b = t
+            stage("E2E ${b.name}") {
+              catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                sh "npx playwright install --with-deps ${b.name}"
+                sh "npx playwright test --project=${b.project} --workers=4 --retries=0"
+              }
+              sh "mkdir -p reports/${b.name} && cp -r playwright-report/. reports/${b.name}/ || true"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: 'reports/**, test-results/**', allowEmptyArchive: true
+      script {
+        def res = currentBuild.currentResult
+        withCredentials([string(credentialsId: 'telegram-bot-token', variable: 'TG_TOKEN'),
+                         string(credentialsId: 'telegram-chat-id', variable: 'TG_CHAT')]) {
+          sh "curl -s --max-time 20 --data-urlencode chat_id=\$TG_CHAT " +
+             "--data-urlencode 'text=${res}: ${env.JOB_NAME} #${env.BUILD_NUMBER} ${env.BUILD_URL}' " +
+             "https://api.telegram.org/bot\$TG_TOKEN/sendMessage || true"
+        }
+      }
+    }
+  }
+}

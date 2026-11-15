@@ -73,6 +73,15 @@ export function futureSlotClock(timeZone: string, leadMs: number): { date: strin
   return shiftClock(clock.date, clock.time, 1);
 }
 
+export function leadSlackMs(slot: { date: string; time: string }, timeZone: string, leadMs: number): number {
+  return zonedInstant(slot.date, slot.time, timeZone) - Date.now() - leadMs;
+}
+
+export function clockPastLead(timeZone: string, leadMs: number, offsetMinutes: number): { date: string; time: string } {
+  const edge = futureSlotClock(timeZone, leadMs);
+  return shiftClock(edge.date, edge.time, offsetMinutes);
+}
+
 export function pastClock(timeZone: string): { date: string; time: string } {
   const now = zonedDateTime(new Date(), timeZone);
   const hourAgo = shiftClock(now.date, now.time, -60);
