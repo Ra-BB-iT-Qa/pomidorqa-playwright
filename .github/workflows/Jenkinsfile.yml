@@ -2,20 +2,27 @@ pipeline {
   agent any
   options {
     timeout(time: 60, unit: 'MINUTES')
-    disableConcurrentBuilds(abortPrevious: true)
+    disableConcurrentBuilds()
   }
   parameters {
-    choice(name: 'BROWSERS', choices: ['all', 'chromium'], description: 'Браузеры E2E')
+    choice(name: 'BROWSERS', choices: ['chromium', 'all'], description: 'Браузеры E2E')
   }
-  environment { CI = 'true' }
-  
+  environment {
+    CI = 'true'
+  }
+
+  stages {
     stage('Check tools') {
       steps {
         sh 'node -v && npm -v'
       }
     }
-  stages {
-    stage('Install') { steps { sh 'npm ci' } }
+
+    stage('Install') {
+      steps {
+        sh 'npm ci'
+      }
+    }
 
     stage('Typecheck and lint') {
       steps {
@@ -27,11 +34,6 @@ pipeline {
     stage('Unit and API') {
       steps {
         sh 'npm run test:pyramid'
-      }
-      post {
-        always {
-          sh 'mkdir -p reports/unit-api && cp -r playwright-report/. reports/unit-api/ || true'
-        }
       }
     }
 
@@ -45,12 +47,11 @@ pipeline {
           }
           for (t in targets) {
             def b = t
-            stage("E2E ${b.name}") {
-              catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                sh "npx playwright install --with-deps ${b.name}"
+            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+              stage("E2E ${b.name}") {
+                sh "npx playwright install ${b.name}"
                 sh "npx playwright test --project=${b.project} --workers=4 --retries=0"
               }
-              sh "mkdir -p reports/${b.name} && cp -r playwright-report/. reports/${b.name}/ || true"
             }
           }
         }
@@ -60,16 +61,7 @@ pipeline {
 
   post {
     always {
-      archiveArtifacts artifacts: 'reports/**, test-results/**', allowEmptyArchive: true
-      script {
-        def res = currentBuild.currentResult
-        withCredentials([string(credentialsId: 'telegram-bot-token', variable: 'TG_TOKEN'),
-                         string(credentialsId: 'telegram-chat-id', variable: 'TG_CHAT')]) {
-          sh "curl -s --max-time 20 --data-urlencode chat_id=\$TG_CHAT " +
-             "--data-urlencode 'text=${res}: ${env.JOB_NAME} #${env.BUILD_NUMBER} ${env.BUILD_URL}' " +
-             "https://api.telegram.org/bot\$TG_TOKEN/sendMessage || true"
-        }
-      }
+      archiveArtifacts artifacts: 'playwright-report/**, test-results/**', allowEmptyArchive: true
     }
   }
 }
