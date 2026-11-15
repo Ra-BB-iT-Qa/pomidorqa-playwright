@@ -1,15 +1,19 @@
 pipeline {
-  agent { docker { image 'node:24-bookworm'; args '-u root' } }
+  agent any
   options {
     timeout(time: 60, unit: 'MINUTES')
     disableConcurrentBuilds(abortPrevious: true)
-    timestamps()
   }
   parameters {
     choice(name: 'BROWSERS', choices: ['all', 'chromium'], description: 'Браузеры E2E')
   }
   environment { CI = 'true' }
-
+  
+    stage('Check tools') {
+      steps {
+        sh 'node -v && npm -v'
+      }
+    }
   stages {
     stage('Install') { steps { sh 'npm ci' } }
 
